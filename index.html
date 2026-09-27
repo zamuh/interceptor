@@ -1,0 +1,1774 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interceptor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@500;700;900&family=Rajdhani:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --accent: #36c8ff;
+    --accent-2: #ff8a1f;
+    --danger: #ff2d55;
+    --text: #e6f1ff;
+    --muted: #8aa0c0;
+    --panel: rgba(8, 14, 30, 0.82);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #05070f; color: var(--text); font-family: 'Rajdhani', system-ui, sans-serif; user-select: none; }
+  #game { position: fixed; inset: 0; }
+  #game canvas { display: block; }
+  #fx { position: fixed; inset: 0; pointer-events: none; }
+
+  /* Crosshair */
+  #crosshair { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); pointer-events: none; display: none; }
+  #hitmarker { position: fixed; left: 50%; top: 50%; width: 34px; height: 34px; transform: translate(-50%, -50%) rotate(45deg); pointer-events: none; opacity: 0; transition: opacity .15s; }
+  #hitmarker::before, #hitmarker::after { content: ''; position: absolute; background: #fff; }
+  #hitmarker::before { left: 16px; top: 0; width: 2px; height: 34px; clip-path: polygon(0 0,100% 0,100% 30%,0 30%,0 70%,100% 70%,100% 100%,0 100%); }
+  #hitmarker::after { top: 16px; left: 0; height: 2px; width: 34px; clip-path: polygon(0 0,30% 0,30% 100%,0 100%,0 0,70% 0,100% 0,100% 100%,70% 100%); }
+
+  /* HUD */
+  #hud { position: fixed; inset: 0; pointer-events: none; display: none; }
+  .hud-box { position: absolute; font-family: 'Orbitron', sans-serif; text-shadow: 0 0 8px rgba(54,200,255,.6); }
+  #hud-score { top: 18px; left: 22px; }
+  #hud-score .label, #hud-level .label, #hud-best .label { font-size: 11px; letter-spacing: 3px; color: var(--muted); }
+  #hud-score .value { font-size: 34px; font-weight: 900; }
+  #hud-combo { font-size: 16px; color: var(--accent-2); margin-top: 2px; min-height: 20px; }
+  #hud-level { top: 18px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #hud-level .value { font-size: 26px; font-weight: 700; }
+  #hud-time { font-size: 14px; color: var(--muted); margin-top: 2px; }
+  #levelbar { width: 180px; height: 4px; background: rgba(255,255,255,.12); margin: 6px auto 0; border-radius: 2px; overflow: hidden; }
+  #levelbar > div { height: 100%; width: 0; background: linear-gradient(90deg, var(--accent), #9b6bff); }
+  #hud-best { top: 18px; right: 22px; text-align: right; }
+  #hud-best .value { font-size: 20px; font-weight: 700; }
+  #ammo { position: absolute; bottom: 22px; left: 50%; transform: translateX(-50%); text-align: center; }
+  #ammo-n { font-size: 38px; font-weight: 900; }
+  #ammo-name { font-size: 11px; letter-spacing: 3px; color: var(--muted); margin-bottom: 2px; }
+  #radar { position: absolute; left: 22px; bottom: 22px; width: 170px; height: 170px; }
+  #banner { position: fixed; top: 26%; left: 50%; transform: translate(-50%, -50%); text-align: center; pointer-events: none; opacity: 0; transition: opacity .4s, transform .4s; font-family: 'Orbitron', sans-serif; }
+  #banner.show { opacity: 1; transform: translate(-50%, -60%); }
+  #banner .big { font-size: 54px; font-weight: 900; letter-spacing: 6px; text-shadow: 0 0 22px var(--accent); }
+  #banner .small { font-size: 18px; color: var(--accent-2); margin-top: 8px; font-family: 'Rajdhani', sans-serif; font-weight: 700; letter-spacing: 1px; }
+  #vignette { position: fixed; inset: 0; pointer-events: none; opacity: 0; background: radial-gradient(ellipse at center, transparent 45%, rgba(255,20,60,.55) 100%); }
+  #flash { position: fixed; inset: 0; pointer-events: none; background: #ff1f47; opacity: 0; }
+  .popup { position: fixed; pointer-events: none; font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 18px; transform: translate(-50%, -50%); text-shadow: 0 0 8px currentColor; white-space: nowrap; }
+
+  /* Overlays */
+  .overlay { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at center, rgba(10,20,45,.72), rgba(3,5,12,.94)); padding: 16px; }
+  .overlay.hidden { display: none; }
+  .card { background: var(--panel); border: 1px solid rgba(54,200,255,.25); border-radius: 16px; padding: 36px 42px; max-width: 620px; width: 100%; text-align: center; box-shadow: 0 0 60px rgba(54,200,255,.12); max-height: 100%; overflow-y: auto; }
+  h1 { font-family: 'Orbitron', sans-serif; font-size: clamp(34px, 7vw, 58px); font-weight: 900; letter-spacing: 6px; background: linear-gradient(180deg, #fff, var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+  h2 { font-family: 'Orbitron', sans-serif; font-size: 36px; font-weight: 900; letter-spacing: 4px; }
+  .subtitle { color: var(--muted); font-size: 18px; margin: 6px 0 24px; }
+  .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; margin-bottom: 22px; }
+  .key { background: rgba(255,255,255,.06); border: 1px solid rgba(255,255,255,.12); border-radius: 8px; padding: 6px 12px; font-size: 16px; }
+  .key b { color: var(--accent); }
+  .legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px 16px; text-align: left; margin: 0 auto 26px; font-size: 16px; }
+  .legend div { display: flex; align-items: center; gap: 10px; }
+  .legend i { width: 14px; height: 14px; border-radius: 50%; flex: none; box-shadow: 0 0 10px currentColor; background: currentColor; }
+  .legend span { color: var(--muted); font-size: 14px; }
+  button { font-family: 'Orbitron', sans-serif; font-size: 18px; font-weight: 700; letter-spacing: 3px; color: #03101f; background: linear-gradient(180deg, #7fe0ff, var(--accent)); border: 0; border-radius: 10px; padding: 16px 40px; cursor: pointer; box-shadow: 0 0 24px rgba(54,200,255,.45); transition: transform .1s, box-shadow .2s; }
+  button:hover { transform: translateY(-1px); box-shadow: 0 0 36px rgba(54,200,255,.7); }
+  button:disabled { opacity: .45; cursor: default; transform: none; box-shadow: none; }
+  /* Ajustes */
+  .card.wide { max-width: 880px; }
+  .menu-actions { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  button.ghost { background: transparent; color: var(--text); border: 1px solid rgba(54,200,255,.45); box-shadow: none; }
+  button.ghost:hover { background: rgba(54,200,255,.1); box-shadow: none; }
+  button.small { font-size: 12px; padding: 9px 18px; letter-spacing: 2px; }
+  .slot { margin: 18px 0 22px; text-align: left; }
+  .slot.hidden { display: none; }
+  .set-grid { display: grid; grid-template-columns: 1fr 1.35fr; gap: 16px; }
+  @media (max-width: 760px) { .set-grid { grid-template-columns: 1fr; } }
+  .set-grid section { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 12px; padding: 16px 18px; }
+  .weapon-pick { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.07); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .weapons { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  @media (max-width: 560px) { .weapons { grid-template-columns: 1fr; } }
+  .weapons button { text-align: left; padding: 14px 16px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.1); border-radius: 10px; box-shadow: none; color: var(--text); font-family: 'Rajdhani', sans-serif; letter-spacing: 0; font-size: 14px; font-weight: 500; display: block; }
+  .weapons button:hover { box-shadow: none; background: rgba(255,255,255,.07); }
+  .weapons button.active { border-color: var(--accent); background: rgba(54,200,255,.12); }
+  .weapons .wname { font-family: 'Orbitron', sans-serif; font-weight: 700; font-size: 15px; letter-spacing: 2px; }
+  .weapons .wcal { color: var(--muted); font-size: 13px; margin: 2px 0 10px; }
+  .weapons .wkey { float: right; font-family: 'Orbitron', sans-serif; font-size: 11px; color: var(--muted); border: 1px solid rgba(255,255,255,.2); border-radius: 4px; padding: 1px 6px; }
+  .wstat { display: grid; grid-template-columns: 74px 1fr; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); margin: 5px 0; }
+  .wstat b { display: block; height: 5px; border-radius: 3px; background: rgba(255,255,255,.1); position: relative; overflow: hidden; }
+  .wstat b::after { content: ''; position: absolute; inset: 0; width: var(--v); background: linear-gradient(90deg, var(--accent), #9b6bff); }
+  .weapon-pick h3, .set-grid h3 { font-family: 'Orbitron', sans-serif; font-size: 12px; letter-spacing: 3px; color: var(--accent); margin-bottom: 10px; }
+  .row { display: grid; grid-template-columns: 104px 1fr 42px; align-items: center; gap: 10px; margin: 10px 0; font-size: 15px; color: var(--text); }
+  .row input[type=range] { width: 100%; accent-color: var(--accent); }
+  .row output { text-align: right; color: var(--muted); font-variant-numeric: tabular-nums; }
+  .row.check { grid-template-columns: auto 1fr; cursor: pointer; }
+  .row.check input { width: 18px; height: 18px; accent-color: var(--accent); }
+  .xh-top { display: flex; gap: 14px; align-items: stretch; margin-bottom: 4px; }
+  #xh-preview { width: 116px; height: 116px; flex: none; border-radius: 10px; background: radial-gradient(circle at 50% 40%, #1d2e52, #070b18); border: 1px solid rgba(255,255,255,.08); }
+  .xh-styles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; flex: 1; }
+  .xh-styles button { padding: 5px 2px; background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1); border-radius: 8px; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; font-family: 'Rajdhani', sans-serif; font-size: 12px; letter-spacing: 0; color: var(--muted); font-weight: 700; }
+  .xh-styles button:hover { box-shadow: none; background: rgba(255,255,255,.09); }
+  .xh-styles button.active { border-color: var(--accent); background: rgba(54,200,255,.14); color: var(--text); }
+  .xh-styles canvas { width: 30px; height: 30px; }
+  .swatches { display: flex; gap: 7px; flex-wrap: wrap; }
+  .swatches button { width: 22px; height: 22px; padding: 0; border-radius: 50%; border: 2px solid rgba(255,255,255,.15); box-shadow: none; }
+  .swatches button:hover { box-shadow: none; }
+  .swatches button.active { border-color: #fff; box-shadow: 0 0 0 2px rgba(54,200,255,.6); }
+  input[type=color] { width: 40px; height: 28px; border: 0; background: none; padding: 0; cursor: pointer; }
+  .set-footer { display: flex; justify-content: flex-end; margin-top: 12px; }
+  .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 22px 0 26px; }
+  .stat { background: rgba(255,255,255,.04); border-radius: 10px; padding: 12px; }
+  .stat .label { color: var(--muted); font-size: 13px; letter-spacing: 2px; text-transform: uppercase; }
+  .stat .value { font-family: 'Orbitron', sans-serif; font-size: 26px; font-weight: 700; }
+  #newbest { color: var(--accent-2); font-family: 'Orbitron', sans-serif; font-weight: 700; letter-spacing: 2px; margin-top: 8px; min-height: 22px; }
+  #over h2 { color: var(--danger); text-shadow: 0 0 24px rgba(255,45,85,.6); }
+  .hint { color: var(--muted); font-size: 14px; margin-top: 16px; }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="game"></div>
+<canvas id="fx"></canvas>
+<div id="vignette"></div>
+<div id="flash"></div>
+<canvas id="crosshair"></canvas>
+<div id="hitmarker"></div>
+
+<div id="hud">
+  <div class="hud-box" id="hud-score"><div class="label">PUNTOS</div><div class="value" id="score">0</div><div id="hud-combo"></div></div>
+  <div class="hud-box" id="hud-level"><div class="label">NIVEL</div><div class="value" id="level">1</div><div id="levelbar"><div></div></div><div id="hud-time">0:00</div></div>
+  <div class="hud-box" id="hud-best"><div class="label">RÉCORD</div><div class="value" id="best">0</div></div>
+  <canvas id="radar" width="340" height="340"></canvas>
+  <div class="hud-box" id="ammo"><div id="ammo-name"></div><span id="ammo-n">∞</span></div>
+</div>
+<div id="banner"><div class="big"></div><div class="small"></div></div>
+
+<div class="overlay" id="menu">
+  <div class="card">
+    <h1>INTERCEPTOR</h1>
+    <p class="subtitle">Estás anclado en tu posición. Derriba cada proyectil antes de que te alcance.</p>
+    <div class="controls">
+      <div class="key"><b>Ratón</b> apuntar</div>
+      <div class="key"><b>Clic</b> disparar (mantén para ráfaga)</div>
+      <div class="key"><b>1 / 2</b> cambiar arma</div>
+      <div class="key"><b>F</b> inspeccionar</div>
+      <div class="key"><b>ESC</b> pausa</div>
+    </div>
+    <div class="legend">
+      <div style="color:#ff8a1f"><i></i><div style="color:var(--text)">Normal<br><span>Nivel 1</span></div></div>
+      <div style="color:#ff2d55"><i></i><div style="color:var(--text)">Rápido<br><span>Nivel 2 · pequeño y veloz</span></div></div>
+      <div style="color:#39ff88"><i></i><div style="color:var(--text)">Zigzag<br><span>Nivel 3 · trayectoria errática</span></div></div>
+      <div style="color:#b04dff"><i></i><div style="color:var(--text)">Blindado<br><span>Nivel 4 · necesita 3 impactos</span></div></div>
+      <div style="color:#22d3ff"><i></i><div style="color:var(--text)">Divisor<br><span>Nivel 5 · se parte en dos</span></div></div>
+    </div>
+    <div class="menu-actions">
+      <button id="start">JUGAR</button>
+      <button class="ghost" id="open-settings">AJUSTES</button>
+    </div>
+    <div id="menu-slot" class="slot hidden">
+      <div id="settings">
+        <section class="weapon-pick">
+          <h3>ARMA</h3>
+          <div class="weapons" id="weapon-cards"></div>
+        </section>
+        <div class="set-grid">
+          <section>
+            <h3>CONTROL</h3>
+            <label class="row"><span>Sensibilidad</span><input type="range" id="set-sens" min="0.1" max="3" step="0.05"><output id="out-sens"></output></label>
+            <label class="row"><span>Campo de visión</span><input type="range" id="set-fov" min="60" max="110" step="1"><output id="out-fov"></output></label>
+          </section>
+          <section>
+            <h3>MIRA</h3>
+            <div class="xh-top">
+              <canvas id="xh-preview"></canvas>
+              <div class="xh-styles" id="xh-styles"></div>
+            </div>
+            <div class="row"><span>Color</span><div class="swatches" id="xh-swatches"></div><input type="color" id="set-color" aria-label="Color personalizado"></div>
+            <label class="row"><span>Tamaño</span><input type="range" id="set-size" min="2" max="24" step="1"><output id="out-size"></output></label>
+            <label class="row"><span>Grosor</span><input type="range" id="set-thick" min="1" max="6" step="0.5"><output id="out-thick"></output></label>
+            <label class="row"><span>Separación</span><input type="range" id="set-gap" min="0" max="16" step="1"><output id="out-gap"></output></label>
+            <label class="row"><span>Opacidad</span><input type="range" id="set-alpha" min="0.2" max="1" step="0.05"><output id="out-alpha"></output></label>
+            <label class="row check"><input type="checkbox" id="set-outline"><span>Contorno oscuro</span></label>
+          </section>
+        </div>
+        <div class="set-footer"><button class="ghost small" id="set-reset">RESTABLECER</button></div>
+      </div>
+    </div>
+    <p class="hint">Un solo impacto y pierdes. Vigila el radar: con el tiempo te atacarán desde todas las direcciones.</p>
+  </div>
+</div>
+
+<div class="overlay hidden" id="pause">
+  <div class="card wide">
+    <h2>PAUSA</h2>
+    <p class="subtitle" id="pause-msg">Haz clic para volver a la acción.</p>
+    <div id="pause-slot" class="slot"></div>
+    <button id="resume">CONTINUAR</button>
+  </div>
+</div>
+
+<div class="overlay hidden" id="over">
+  <div class="card">
+    <h2>IMPACTO</h2>
+    <p class="subtitle">Un proyectil ha atravesado tu defensa.</p>
+    <div id="newbest"></div>
+    <div class="stats">
+      <div class="stat"><div class="label">Puntos</div><div class="value" id="s-score">0</div></div>
+      <div class="stat"><div class="label">Nivel</div><div class="value" id="s-level">1</div></div>
+      <div class="stat"><div class="label">Tiempo</div><div class="value" id="s-time">0:00</div></div>
+      <div class="stat"><div class="label">Precisión</div><div class="value" id="s-acc">0%</div></div>
+      <div class="stat"><div class="label">Derribados</div><div class="value" id="s-kills">0</div></div>
+      <div class="stat"><div class="label">Mejor combo</div><div class="value" id="s-combo">0</div></div>
+    </div>
+    <button id="restart">REINTENTAR</button>
+  </div>
+</div>
+
+<script type="module">
+import * as THREE from 'three';
+import { RoomEnvironment } from 'three/addons/environments/RoomEnvironment.js';
+
+// ---------- Utilidades ----------
+const $ = (id) => document.getElementById(id);
+const rand = (a, b) => a + Math.random() * (b - a);
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch {} },
+};
+const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+// ---------- Audio (sintetizado, sin archivos) ----------
+// Los sonidos del arma se generan muestra a muestra al arrancar (física simplificada del disparo)
+let actx = null;
+let master = null, reverb = null, SND = null;
+function audio() {
+  if (!actx) {
+    actx = new (window.AudioContext || window.webkitAudioContext)();
+    // Compresor final: los disparos suenan con pegada sin saturar la salida
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -14; comp.knee.value = 6; comp.ratio.value = 8; comp.attack.value = 0.001; comp.release.value = 0.12;
+    comp.connect(actx.destination);
+    master = actx.createGain(); master.gain.value = 0.9; master.connect(comp);
+    reverb = actx.createConvolver(); reverb.buffer = makeImpulse(actx, 1.8);
+    const wet = actx.createGain(); wet.gain.value = 0.32;
+    reverb.connect(wet).connect(comp);
+    SND = buildGunSounds(actx);
+  }
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+function route(a, node, rev) {
+  node.connect(master);
+  if (rev) { const s = a.createGain(); s.gain.value = rev; node.connect(s).connect(reverb); }
+}
+
+// Respuesta de sala: reflexiones tempranas + cola difusa que se oscurece (los agudos se apagan antes)
+function makeImpulse(a, dur) {
+  const sr = a.sampleRate, n = Math.floor(sr * dur), ir = a.createBuffer(2, n, sr);
+  const pre = Math.floor(sr * 0.012);
+  for (let ch = 0; ch < 2; ch++) {
+    const d = ir.getChannelData(ch);
+    for (let k = 0; k < 8; k++) { const i = pre + Math.floor(sr * rand(0.004, 0.09)); if (i < n) d[i] += rand(-1, 1) * (0.7 - k * 0.07); }
+    let lp = 0;
+    for (let i = pre; i < n; i++) {
+      const t = (i - pre) / sr;
+      lp += (0.08 + 0.8 * Math.exp(-t / 0.25)) * ((Math.random() * 2 - 1) - lp);
+      d[i] += lp * Math.exp(-t * 6.9 / dur) * 0.9;
+    }
+  }
+  return ir;
+}
+
+// Genera un buffer estéreo normalizado a partir de una función que rellena las muestras
+function synthBuffer(a, dur, fill) {
+  const sr = a.sampleRate, n = Math.ceil(dur * sr);
+  const L = new Float32Array(n), R = new Float32Array(n);
+  fill(L, R, sr);
+  let peak = 0;
+  for (let i = 0; i < n; i++) peak = Math.max(peak, Math.abs(L[i]), Math.abs(R[i]));
+  const k = peak > 0 ? 0.95 / peak : 1, buf = a.createBuffer(2, n, sr);
+  const bl = buf.getChannelData(0), br = buf.getChannelData(1);
+  for (let i = 0; i < n; i++) { bl[i] = L[i] * k; br[i] = R[i] * k; }
+  return buf;
+}
+
+// Golpe metálico: impacto de ruido + modos de vibración inarmónicos que se amortiguan
+function metalHit(L, R, sr, t0, amp, freqs, decay, pan = 0) {
+  const i0 = Math.floor(t0 * sr), n = Math.min(L.length - i0, Math.floor(decay * 7 * sr));
+  const modes = freqs.map((f, j) => ({ w: 2 * Math.PI * f * rand(0.97, 1.03) / sr, ph: Math.random() * 6.28, d: decay * (1 - j * 0.1), g: 1 / Math.sqrt(j + 1) }));
+  const gl = 1 - Math.max(0, pan), gr = 1 + Math.min(0, pan);
+  for (let k = 0; k < n; k++) {
+    const t = k / sr;
+    let v = (Math.random() * 2 - 1) * Math.exp(-t / 0.0012) * 1.3;
+    for (const m of modes) v += Math.sin(m.ph + m.w * k) * Math.exp(-t / m.d) * m.g;
+    L[i0 + k] += v * amp * gl; R[i0 + k] += v * amp * gr;
+  }
+}
+
+// Disparo de 9 mm: onda de choque + detonación + golpe grave + gases + ciclo de la corredera
+function glockShot(L, R, sr) {
+  const n = L.length, f0 = rand(95, 125);
+  let lpA = 0, lpB = 0, hp = 0, prev = 0, phase = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = Math.random() * 2 - 1;
+    hp = 0.6 * (hp + w - prev); prev = w;
+    const crack = hp * Math.exp(-t / 0.0016) * 2.2;                         // chasquido supersónico de boca
+    lpA += (0.04 + 0.6 * Math.exp(-t / 0.012)) * (w - lpA);
+    const blast = lpA * Math.exp(-t / 0.05) * 3.2;                          // detonación que se oscurece
+    phase += 2 * Math.PI * (42 + (f0 - 42) * Math.exp(-t / 0.035)) / sr;
+    const boom = Math.sin(phase) * Math.exp(-t / 0.075) * (1 - Math.exp(-t / 0.0006)) * 1.1;  // golpe en el pecho
+    lpB += 0.012 * (w - lpB);
+    const gas = lpB * Math.exp(-t / 0.18) * 5.0;                            // expansión de gases
+    const x = Math.tanh((crack + blast + boom + gas) * 1.6);                 // saturación: pegada
+    L[i] = x; R[i] = x * (t < 0.01 ? 1 : 0.96);
+  }
+  metalHit(L, R, sr, 0.011, 0.22, [2400, 3950, 5650, 7400, 9800], 0.009, 0.35);  // corredera hacia atrás
+  metalHit(L, R, sr, 0.047, 0.30, [1900, 3150, 4800, 6950, 9300], 0.016, 0.35);  // corredera cerrando
+}
+
+// Disparo de .50 AE: mucho más grave y largo, con el cerrojo rotativo pesado de la Desert Eagle
+function deagleShot(L, R, sr) {
+  const n = L.length, f0 = rand(62, 78);
+  let lpA = 0, lpB = 0, lpC = 0, hp = 0, prev = 0, phase = 0, phase2 = 0;
+  for (let i = 0; i < n; i++) {
+    const t = i / sr, w = Math.random() * 2 - 1;
+    hp = 0.5 * (hp + w - prev); prev = w;
+    const crack = hp * Math.exp(-t / 0.0022) * 3.2;                          // onda de choque, más ancha
+    lpA += (0.03 + 0.5 * Math.exp(-t / 0.018)) * (w - lpA);
+    const blast = lpA * Math.exp(-t / 0.085) * 3.8;                          // detonación larga
+    phase += 2 * Math.PI * (32 + (f0 - 32) * Math.exp(-t / 0.05)) / sr;
+    const boom = Math.sin(phase) * Math.exp(-t / 0.14) * (1 - Math.exp(-t / 0.0008)) * 1.5;
+    phase2 += 2 * Math.PI * 24 / sr;
+    const sub = Math.sin(phase2) * Math.exp(-t / 0.22) * (1 - Math.exp(-t / 0.004)) * 0.7;  // sub-grave
+    lpB += 0.008 * (w - lpB);
+    const gas = lpB * Math.exp(-t / 0.32) * 7.0;                             // gases del .50
+    lpC += 0.05 * (w - lpC);
+    const slap = t > 0.11 ? lpC * Math.exp(-(t - 0.11) / 0.09) * 0.9 : 0;     // eco de la detonación
+    const x = Math.tanh((crack + blast + boom + sub + gas + slap) * 1.9);
+    L[i] = x; R[i] = x * (t < 0.015 ? 1 : 0.94);
+  }
+  metalHit(L, R, sr, 0.002, 0.22, [980, 1840, 2960, 4380], 0.06, 0.15);         // "ting" metálico del arma resonando
+  metalHit(L, R, sr, 0.018, 0.30, [1350, 2350, 3550, 5250, 7200], 0.016, 0.3);  // cerrojo hacia atrás
+  metalHit(L, R, sr, 0.078, 0.42, [1100, 1950, 3050, 4600, 6600], 0.026, 0.3);  // cerrojo cerrando y girando
+}
+
+function buildGunSounds(a) {
+  return {
+    shots: [0, 1, 2, 3].map(() => synthBuffer(a, 0.55, glockShot)),   // variantes para que no suene repetido
+    deagle: [0, 1, 2].map(() => synthBuffer(a, 0.95, deagleShot)),
+    hammer: synthBuffer(a, 0.15, (L, R, sr) => {                        // martillo cayendo en vacío
+      metalHit(L, R, sr, 0, 0.6, [2100, 3600, 5400], 0.008, 0.2);
+      metalHit(L, R, sr, 0.003, 0.3, [900, 1500], 0.01, 0.2);
+    }),
+    deagleSlide: synthBuffer(a, 0.5, (L, R, sr) => {                    // corredera de 2 kg cerrando
+      metalHit(L, R, sr, 0, 1.0, [1200, 2100, 3300, 4900, 7000], 0.045, 0.2);
+      metalHit(L, R, sr, 0.004, 0.6, [380, 760], 0.03, 0.2);
+    }),
+    draw: synthBuffer(a, 0.3, (L, R, sr) => {                           // cambio de arma
+      metalHit(L, R, sr, 0, 0.3, [2600, 4100], 0.004, 0);
+      metalHit(L, R, sr, 0.12, 0.45, [1800, 3200, 5100], 0.006, 0.1);
+    }),
+    dry: synthBuffer(a, 0.12, (L, R, sr) => {
+      metalHit(L, R, sr, 0, 0.5, [3300, 5200, 7700], 0.005, 0.2);
+      metalHit(L, R, sr, 0.004, 0.25, [2100, 4600], 0.004, 0.2);
+    }),
+    magOut: synthBuffer(a, 0.25, (L, R, sr) => {
+      metalHit(L, R, sr, 0, 0.35, [2900, 4700, 6800], 0.004, -0.1);      // botón del retén
+      let lp = 0, hp = 0, prev = 0;                                        // roce del cargador saliendo
+      for (let i = Math.floor(0.012 * sr); i < L.length; i++) {
+        const t = i / sr - 0.012, w = Math.random() * 2 - 1;
+        lp += 0.25 * (w - lp); hp = 0.9 * (hp + lp - prev); prev = lp;
+        const v = hp * Math.exp(-t / 0.05) * Math.min(1, t / 0.005) * 0.5;
+        L[i] += v; R[i] += v;
+      }
+    }),
+    magIn: synthBuffer(a, 0.25, (L, R, sr) => {
+      metalHit(L, R, sr, 0, 0.9, [380, 910, 1560, 2600], 0.022, -0.1);   // golpe sordo del cargador
+      metalHit(L, R, sr, 0.018, 0.4, [2750, 4300, 6200], 0.006, -0.1);   // clic del retén
+    }),
+    slideRelease: synthBuffer(a, 0.4, (L, R, sr) => {
+      metalHit(L, R, sr, 0, 1.0, [1650, 2850, 4350, 6250, 8700], 0.03, 0.2);  // corredera cerrando de golpe
+      metalHit(L, R, sr, 0.003, 0.5, [520, 1150], 0.02, 0.2);
+    }),
+  };
+}
+function playBuffer(buf, { vol = 1, rate = 1, rev = 0 } = {}) {
+  const a = audio();
+  const src = a.createBufferSource(), g = a.createGain();
+  src.buffer = buf; src.playbackRate.value = rate; g.gain.value = vol;
+  src.connect(g); route(a, g, rev); src.start();
+}
+
+function tone({ freq = 440, end = null, type = 'square', dur = 0.1, vol = 0.15, delay = 0, rev = 0 }) {
+  const a = audio(), t = a.currentTime + delay;
+  const o = a.createOscillator(), g = a.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  if (end) o.frequency.exponentialRampToValueAtTime(end, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); route(a, g, rev); o.start(t); o.stop(t + dur + 0.02);
+}
+let noiseBuf = null;
+function noise({ dur = 0.2, vol = 0.3, f0 = 3000, f1 = 200, delay = 0, type = 'lowpass', q = 1, rev = 0 }) {
+  const a = audio(), t = a.currentTime + delay;
+  if (!noiseBuf) {
+    noiseBuf = a.createBuffer(1, a.sampleRate, a.sampleRate);
+    const d = noiseBuf.getChannelData(0);
+    for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  }
+  const s = a.createBufferSource(), f = a.createBiquadFilter(), g = a.createGain();
+  s.buffer = noiseBuf; f.type = type; f.Q.value = q;
+  f.frequency.setValueAtTime(f0, t); f.frequency.exponentialRampToValueAtTime(f1, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f).connect(g); route(a, g, rev);
+  s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
+}
+const sfx = {
+  shoot(id) {
+    audio();
+    const set = id === 'deagle' ? SND.deagle : SND.shots;
+    playBuffer(set[Math.random() * set.length | 0], { vol: 1, rate: rand(0.97, 1.03), rev: id === 'deagle' ? 1.2 : 0.9 });
+  },
+  dry(id) { audio(); playBuffer(id === 'deagle' ? SND.hammer : SND.dry, { vol: 0.5, rate: rand(0.97, 1.03) }); },
+  draw() { audio(); playBuffer(SND.draw, { vol: 0.5 }); },
+  magOut() { audio(); playBuffer(SND.magOut, { vol: 0.45 }); },
+  magIn() { audio(); playBuffer(SND.magIn, { vol: 0.6, rev: 0.15 }); },
+  slideRelease(id) { audio(); playBuffer(id === 'deagle' ? SND.deagleSlide : SND.slideRelease, { vol: 0.65, rev: 0.25 }); },
+  hit() { tone({ freq: 1400, end: 900, type: 'triangle', dur: 0.06, vol: 0.1 }); },
+  armor() { tone({ freq: 300, end: 500, type: 'square', dur: 0.07, vol: 0.08 }); },
+  boom() { noise({ dur: 0.45, vol: 0.35, f0: 2500, f1: 80 }); tone({ freq: 160, end: 40, type: 'sine', dur: 0.3, vol: 0.25 }); },
+  level() { [523, 659, 784, 1047].forEach((f, i) => tone({ freq: f, type: 'triangle', dur: 0.18, vol: 0.12, delay: i * 0.09 })); },
+  dead() { tone({ freq: 220, end: 30, type: 'sawtooth', dur: 1.1, vol: 0.25 }); noise({ dur: 1.0, vol: 0.4, f0: 1500, f1: 40 }); },
+};
+
+// ---------- Escena ----------
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+$('game').appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+// Espacio vacío: fondo negro, sin niebla ni horizonte
+scene.background = new THREE.Color(0x000000);
+
+const HEAD = new THREE.Vector3(0, 1.6, 0);
+const camera = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.03, 3000);
+camera.position.copy(HEAD);
+camera.rotation.order = 'YXZ';
+scene.add(camera);
+
+scene.add(new THREE.HemisphereLight(0x88aaff, 0x1a1a2a, 0.7));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9);
+sun.position.set(10, 20, 5);
+scene.add(sun);
+
+// Plataforma del jugador
+const pad = new THREE.Mesh(new THREE.CylinderGeometry(1.4, 1.7, 0.25, 48), new THREE.MeshStandardMaterial({ color: 0x1a2340, metalness: 0.6, roughness: 0.4 }));
+pad.position.y = 0.125; scene.add(pad);
+const padRing = new THREE.Mesh(new THREE.TorusGeometry(1.55, 0.03, 8, 64), new THREE.MeshBasicMaterial({ color: 0x36c8ff }));
+padRing.rotation.x = Math.PI / 2; padRing.position.y = 0.26; scene.add(padRing);
+
+// ---------- Cielo: solo estrellas en todas direcciones ----------
+const skyMat = new THREE.ShaderMaterial({
+  side: THREE.BackSide, depthWrite: false, fog: false,
+  uniforms: { uTime: { value: 0 } },
+  vertexShader: `
+    varying vec3 vDir;
+    void main() {
+      vDir = normalize(position);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: `
+    uniform float uTime;
+    varying vec3 vDir;
+    float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    // Una capa de estrellas: celdas en la esfera, cada una con probabilidad de tener una estrella
+    vec3 stars(vec3 d, float scale, float density, float bright) {
+      vec3 sp = d * scale;
+      vec3 cell = floor(sp);
+      float r = hash(cell);
+      if (r < 1.0 - density) return vec3(0.0);
+      vec3 c = cell + 0.5 + (vec3(hash(cell + 7.1), hash(cell + 3.3), hash(cell + 1.7)) - 0.5) * 0.6;
+      float dist = length(sp - c);
+      float tw = 0.7 + 0.3 * sin(uTime * (0.8 + r * 3.0) + r * 60.0);
+      float s = smoothstep(0.42, 0.0, dist) * tw * bright * (0.4 + 0.6 * hash(cell + 5.0));
+      return mix(vec3(0.72, 0.8, 1.0), vec3(1.0, 0.88, 0.72), hash(cell + 9.0)) * s;
+    }
+    void main() {
+      vec3 d = normalize(vDir);
+      vec3 col = stars(d, 300.0, 0.012, 1.4) + stars(d, 700.0, 0.02, 0.8);
+      gl_FragColor = vec4(col, 1.0);
+      #include <tonemapping_fragment>
+      #include <colorspace_fragment>
+    }`,
+});
+scene.add(new THREE.Mesh(new THREE.SphereGeometry(2500, 48, 24), skyMat));
+
+function updateEnvironment(time) {
+  skyMat.uniforms.uTime.value = time;
+}
+
+// Textura de brillo
+const glowTex = (() => {
+  const c = document.createElement('canvas'); c.width = c.height = 64;
+  const x = c.getContext('2d'), g = x.createRadialGradient(32, 32, 0, 32, 32, 32);
+  g.addColorStop(0, 'rgba(255,255,255,1)'); g.addColorStop(0.25, 'rgba(255,255,255,.55)'); g.addColorStop(1, 'rgba(255,255,255,0)');
+  x.fillStyle = g; x.fillRect(0, 0, 64, 64);
+  return new THREE.CanvasTexture(c);
+})();
+
+// ---------- Arma ----------
+// Glock 17 Gen5 a escala real (metros): 186 mm de largo, corredera de 25,5 mm, empuñadura a ~21°
+const gun = new THREE.Group();
+// Piezas del arma equipada (se reasignan al cambiar de arma)
+let slide, ejectPort, magazine, gunGrip, muzzle, newMag, handMag;
+let buildTarget = null;   // grupo que recibe las piezas mientras se construye un arma
+
+// Reflejos de estudio solo para el arma: el espacio vacío no da nada que reflejar
+const envTex = (() => { const pm = new THREE.PMREMGenerator(renderer); const t = pm.fromScene(new RoomEnvironment(), 0.04).texture; pm.dispose(); return t; })();
+
+function canvasTex(size, draw, srgb = false) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  draw(c.getContext('2d'), size);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  if (srgb) t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
+// Mapa de normales calculado a partir de un mapa de alturas dibujado en canvas
+function normalTex(size, drawHeight, strength) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  const x = c.getContext('2d'); drawHeight(x, size);
+  const src = x.getImageData(0, 0, size, size).data, out = x.createImageData(size, size);
+  const h = (i, j) => src[(((j + size) % size) * size + ((i + size) % size)) * 4] / 255;
+  for (let j = 0; j < size; j++) for (let i = 0; i < size; i++) {
+    const dx = (h(i + 1, j) - h(i - 1, j)) * strength, dy = (h(i, j + 1) - h(i, j - 1)) * strength;
+    const l = Math.hypot(dx, dy, 1), k = (j * size + i) * 4;
+    out.data[k] = (-dx / l * 0.5 + 0.5) * 255; out.data[k + 1] = (dy / l * 0.5 + 0.5) * 255;
+    out.data[k + 2] = (1 / l * 0.5 + 0.5) * 255; out.data[k + 3] = 255;
+  }
+  x.putImageData(out, 0, 0);
+  const t = new THREE.CanvasTexture(c); t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = 8;
+  return t;
+}
+// Punteado de la empuñadura (textura Gen5)
+const stippleN = normalTex(256, (x, sz) => {
+  x.fillStyle = '#000'; x.fillRect(0, 0, sz, sz);
+  for (let i = 0; i < 1400; i++) {
+    const r = 1.2 + Math.random() * 2.2, px = Math.random() * sz, py = Math.random() * sz;
+    const g = x.createRadialGradient(px, py, 0, px, py, r);
+    g.addColorStop(0, '#fff'); g.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = g; x.beginPath(); x.arc(px, py, r, 0, 7); x.fill();
+  }
+}, 3);
+stippleN.repeat.set(110, 110);
+// Micro-rayado del acabado nDLC de la corredera
+const brushRough = canvasTex(256, (x, sz) => {
+  x.fillStyle = '#6e6e6e'; x.fillRect(0, 0, sz, sz);
+  x.globalAlpha = 0.25;
+  for (let i = 0; i < 900; i++) { const v = 90 + Math.random() * 60 | 0; x.fillStyle = `rgb(${v},${v},${v})`; x.fillRect(0, Math.random() * sz, sz, 1); }
+  x.globalAlpha = 0.35;
+  for (let i = 0; i < 300; i++) { x.fillStyle = Math.random() < 0.5 ? '#9a9a9a' : '#4a4a4a'; x.fillRect(Math.random() * sz, Math.random() * sz, 2, 2); }
+});
+brushRough.repeat.set(12, 12);
+
+const M = {
+  slide: new THREE.MeshStandardMaterial({ color: 0x1c1d20, metalness: 0.75, roughness: 0.95, roughnessMap: brushRough, envMap: envTex, envMapIntensity: 1.0 }),
+  polymer: new THREE.MeshStandardMaterial({ color: 0x191a1d, metalness: 0, roughness: 0.55, envMap: envTex, envMapIntensity: 0.45 }),
+  grip: new THREE.MeshStandardMaterial({ color: 0x191a1d, metalness: 0, roughness: 0.8, normalMap: stippleN, normalScale: new THREE.Vector2(0.9, 0.9), envMap: envTex, envMapIntensity: 0.35 }),
+  barrel: new THREE.MeshStandardMaterial({ color: 0x3a3b40, metalness: 0.9, roughness: 0.3, envMap: envTex, envMapIntensity: 1.1 }),
+  dark: new THREE.MeshStandardMaterial({ color: 0x050506, metalness: 0.2, roughness: 0.9 }),
+  steel: new THREE.MeshStandardMaterial({ color: 0x8d9097, metalness: 1, roughness: 0.25, envMap: envTex }),
+  brass: new THREE.MeshStandardMaterial({ color: 0xc99a45, metalness: 1, roughness: 0.22, envMap: envTex, envMapIntensity: 1.2 }),
+  copper: new THREE.MeshStandardMaterial({ color: 0xb06a3b, metalness: 1, roughness: 0.3, envMap: envTex, envMapIntensity: 1.1 }),
+  white: new THREE.MeshBasicMaterial({ color: 0xe8e8e8 }),
+  // Desert Eagle: acero pavonado, piezas de acero negro y cachas de goma
+  // Desert Eagle estilo CS:GO: acero pavonado gris oscuro con micro-rayado
+  stainless: new THREE.MeshStandardMaterial({ color: 0x5d6067, metalness: 0.9, roughness: 0.75, roughnessMap: brushRough, envMap: envTex, envMapIntensity: 1.25 }),
+  blackSteel: new THREE.MeshStandardMaterial({ color: 0x1a1b1e, metalness: 0.85, roughness: 0.35, envMap: envTex, envMapIntensity: 0.9 }),
+  rubber: new THREE.MeshStandardMaterial({ color: 0x121314, metalness: 0, roughness: 0.9, normalMap: stippleN, normalScale: new THREE.Vector2(1.2, 1.2), envMap: envTex, envMapIntensity: 0.2 }),
+};
+
+const meshAt = (geo, mat, parent, x = 0, y = 0, z = 0) => { const m = new THREE.Mesh(geo, mat); m.position.set(x, y, z); parent.add(m); return m; };
+// Perfil lateral (z, y) extruido a lo ancho (x), centrado, con cantos redondeados
+function sideExtrude(shape, width, bevel, mat, parent = buildTarget) {
+  const depth = width - 2 * bevel;
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.7, bevelSegments: 4, curveSegments: 18 });
+  g.rotateY(-Math.PI / 2); g.translate(depth / 2, 0, 0);
+  return meshAt(g, mat, parent);
+}
+// Sección (x, y) extruida a lo largo (z): de zBack hacia delante
+function lengthExtrude(shape, length, bevel, mat, parent, zBack = 0) {
+  const depth = length - 2 * bevel;
+  const g = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel * 0.6, bevelSegments: 4, curveSegments: 8 });
+  g.translate(0, 0, zBack - bevel - depth);
+  return meshAt(g, mat, parent);
+}
+function rrect(w, h, r, cx = 0, cy = 0) {
+  const sh = new THREE.Shape(), x = cx - w / 2, y = cy - h / 2;
+  sh.moveTo(x + r, y); sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r);
+  sh.lineTo(x + w, y + h - r); sh.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  sh.lineTo(x + r, y + h); sh.quadraticCurveTo(x, y + h, x, y + h - r);
+  sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y);
+  return sh;
+}
+// Cartucho (apunta hacia -z): vaina de latón + proyectil encamisado de cobre
+function cartridgeGeos(caseR, caseLen, bulletPts) {
+  return {
+    caseGeo: new THREE.CylinderGeometry(caseR, caseR, caseLen, 20).rotateX(Math.PI / 2).translate(0, 0, -caseLen / 2),
+    bulletGeo: new THREE.LatheGeometry(bulletPts.map(([r, h]) => new THREE.Vector2(r, h)), 20).rotateX(-Math.PI / 2).translate(0, 0, -caseLen),
+  };
+}
+function makeCartridge(geos) {
+  const g = new THREE.Group();
+  g.add(new THREE.Mesh(geos.caseGeo, M.brass), new THREE.Mesh(geos.bulletGeo, M.copper));
+  return g;
+}
+const AMMO_9 = cartridgeGeos(0.0049, 0.0192, [[0.0045, 0], [0.0045, 0.004], [0.0039, 0.0068], [0.0027, 0.0088], [0.0012, 0.0101], [0, 0.0105]]);
+const AMMO_50 = cartridgeGeos(0.0069, 0.0326, [[0.00635, 0], [0.00635, 0.003], [0.0058, 0.0055], [0.0045, 0.0072], [0.003, 0.0079], [0, 0.0081]]);
+
+// Glock 17 Gen5 a escala real: 186 mm de largo, corredera de 25,5 mm, empuñadura a ~21°
+function buildGlock() {
+  const root = new THREE.Group(), slide = new THREE.Group(), magazine = new THREE.Group(), ejectPort = new THREE.Object3D();
+  buildTarget = root;
+  const L = 0.186, W = 0.0255, H = 0.031;
+  // --- Corredera ---
+  const bev = 0.0022, grow = bev * 0.6, c = 0.0035;
+  const hw = W / 2 - grow, bot = grow, top = H - grow;
+  const sec = new THREE.Shape();
+  sec.moveTo(-hw, bot); sec.lineTo(hw, bot); sec.lineTo(hw, top - c); sec.lineTo(hw - c, top);
+  sec.lineTo(-hw + c, top); sec.lineTo(-hw, top - c); sec.closePath();
+  lengthExtrude(sec, L, bev, M.slide, slide, 0);
+  // Estrías traseras
+  const grooveGeo = new THREE.PlaneGeometry(0.0011, 0.019);
+  for (let i = 0; i < 9; i++) for (const sg of [-1, 1]) {
+    meshAt(grooveGeo, M.dark, slide, sg * (W / 2 + 0.00008), 0.0145, -0.009 - i * 0.0031).rotation.y = sg * Math.PI / 2;
+  }
+  // Tapa trasera (se ve desde la posición del tirador)
+  meshAt(new THREE.ShapeGeometry(rrect(0.015, 0.02, 0.002)), M.polymer, slide, 0, 0.0145, 0.0002);
+  meshAt(new THREE.CircleGeometry(0.0012, 12), M.dark, slide, 0, 0.018, 0.0003);
+  // Ventana de expulsión con la recámara del cañón a la vista
+  meshAt(new THREE.PlaneGeometry(0.0125, 0.044), M.dark, slide, 0.0035, H + 0.0001, -0.058).rotation.x = -Math.PI / 2;
+  meshAt(new THREE.BoxGeometry(0.0098, 0.0012, 0.038), M.barrel, slide, 0.0035, H - 0.0003, -0.06);
+  meshAt(new THREE.PlaneGeometry(0.044, 0.008), M.dark, slide, W / 2 + 0.0001, H - 0.006, -0.058).rotation.y = Math.PI / 2;
+  // Boca: corona del cañón, ánima y guía del muelle recuperador
+  meshAt(new THREE.CylinderGeometry(0.0068, 0.0068, 0.004, 28), M.barrel, slide, 0, 0.0185, -L - 0.0006).rotation.x = Math.PI / 2;
+  meshAt(new THREE.CircleGeometry(0.0046, 24), M.dark, slide, 0, 0.0185, -L - 0.0027).rotation.y = Math.PI;
+  meshAt(new THREE.CircleGeometry(0.003, 16), M.steel, slide, 0, 0.0055, -L - 0.0002).rotation.y = Math.PI;
+  // Mira delantera con punto blanco
+  lengthExtrude(rrect(0.0033, 0.006, 0.0008, 0, H + 0.0026), 0.006, 0.0006, M.polymer, slide, -L + 0.012);
+  meshAt(new THREE.CircleGeometry(0.0011, 16), M.white, slide, 0, H + 0.0038, -L + 0.0122);
+  // Mira trasera con muesca en U contorneada en blanco
+  const rw = 0.0055, rb = H - 0.0005, rt = H + 0.0062, nw = 0.00175, nd = rt - 0.0032;
+  const rs = new THREE.Shape();
+  rs.moveTo(-rw, rb); rs.lineTo(rw, rb); rs.lineTo(rw, rt); rs.lineTo(nw, rt); rs.lineTo(nw, nd + nw);
+  rs.absarc(0, nd + nw, nw, 0, Math.PI, true); rs.lineTo(-nw, rt); rs.lineTo(-rw, rt); rs.closePath();
+  lengthExtrude(rs, 0.007, 0.0005, M.polymer, slide, -0.005);
+  const uArc = meshAt(new THREE.TorusGeometry(nw + 0.0004, 0.00032, 6, 20, Math.PI), M.white, slide, 0, nd + nw, -0.0049);
+  uArc.rotation.z = Math.PI;
+  for (const sg of [-1, 1]) meshAt(new THREE.BoxGeometry(0.00064, rt - nd - nw, 0.0002), M.white, slide, sg * (nw + 0.0004), (rt + nd + nw) / 2, -0.0049);
+  // Grabado del lado izquierdo
+  const logoTex = canvasTex(512, (x) => {
+    x.clearRect(0, 0, 512, 512);
+    x.textBaseline = 'middle';
+    x.font = 'italic 900 56px Arial, sans-serif';
+    x.fillStyle = 'rgba(0,0,0,0.9)'; x.fillText('GLOCK', 12, 258);
+    x.fillStyle = '#56585d'; x.fillText('GLOCK', 10, 256);
+    x.font = '700 24px Arial, sans-serif';
+    x.fillStyle = 'rgba(0,0,0,0.9)'; x.fillText('17 Gen5   AUSTRIA   9x19', 213, 260);
+    x.fillStyle = '#56585d'; x.fillText('17 Gen5   AUSTRIA   9x19', 211, 258);
+  }, true);
+  logoTex.wrapS = logoTex.wrapT = THREE.ClampToEdgeWrapping;
+  logoTex.repeat.set(1, 0.16); logoTex.offset.set(0, 0.42);
+  const logo = meshAt(new THREE.PlaneGeometry(0.07, 0.00875), new THREE.MeshStandardMaterial({ map: logoTex, transparent: true, roughness: 0.6, metalness: 0.3, envMap: envTex }), slide, -W / 2 - 0.0001, 0.0165, -0.122);
+  logo.rotation.y = -Math.PI / 2;
+  ejectPort.position.set(0.012, H, -0.058); slide.add(ejectPort);
+  root.add(slide);
+
+  // --- Armazón de polímero: parte superior con guardapolvo y cola de castor ---
+  const fr = new THREE.Shape();
+  fr.moveTo(0.006, 0.0); fr.lineTo(-0.174, 0.0);
+  fr.quadraticCurveTo(-0.179, 0.0, -0.179, -0.006); fr.quadraticCurveTo(-0.179, -0.016, -0.171, -0.017);
+  fr.lineTo(-0.046, -0.017); fr.quadraticCurveTo(-0.040, -0.018, -0.037, -0.029);
+  fr.lineTo(0.012, -0.029); fr.lineTo(0.016, -0.015); fr.quadraticCurveTo(0.020, -0.006, 0.012, -0.003);
+  fr.closePath();
+  sideExtrude(fr, 0.027, 0.002, M.polymer);
+  // Empuñadura punteada
+  const gp = new THREE.Shape();
+  // Base perpendicular al eje de la empuñadura, como el brocal real
+  gp.moveTo(-0.039, -0.024); gp.quadraticCurveTo(-0.029, -0.062, -0.012, -0.0995);
+  gp.lineTo(-0.0095, -0.1027); gp.lineTo(0.0385, -0.0845); gp.quadraticCurveTo(0.0415, -0.0835, 0.0405, -0.080);
+  gp.quadraticCurveTo(0.0305, -0.051, 0.014, -0.020); gp.lineTo(-0.036, -0.020); gp.closePath();
+  sideExtrude(gp, 0.03, 0.0035, M.grip);
+  // Guardamonte
+  const tg = new THREE.Shape();
+  tg.moveTo(-0.038, -0.028); tg.quadraticCurveTo(-0.040, -0.047, -0.052, -0.047); tg.lineTo(-0.097, -0.047);
+  tg.quadraticCurveTo(-0.108, -0.047, -0.108, -0.036); tg.lineTo(-0.107, -0.016); tg.lineTo(-0.100, -0.016);
+  tg.lineTo(-0.100, -0.035); tg.quadraticCurveTo(-0.100, -0.041, -0.095, -0.041); tg.lineTo(-0.053, -0.041);
+  tg.quadraticCurveTo(-0.046, -0.041, -0.045, -0.030); tg.closePath();
+  sideExtrude(tg, 0.012, 0.0016, M.polymer);
+  // Gatillo curvo con su seguro central
+  const tr = new THREE.Shape();
+  tr.moveTo(-0.0655, -0.017); tr.quadraticCurveTo(-0.0735, -0.029, -0.0685, -0.0395); tr.lineTo(-0.0648, -0.0395);
+  tr.quadraticCurveTo(-0.0685, -0.029, -0.0612, -0.017); tr.closePath();
+  sideExtrude(tr, 0.0065, 0.0012, M.polymer);
+  const sb = new THREE.Shape();
+  sb.moveTo(-0.0668, -0.022); sb.quadraticCurveTo(-0.0712, -0.030, -0.0690, -0.036); sb.lineTo(-0.0676, -0.036);
+  sb.quadraticCurveTo(-0.0694, -0.030, -0.0655, -0.022); sb.closePath();
+  sideExtrude(sb, 0.0022, 0.0004, M.barrel).position.z = -0.0022;
+  // Retén de corredera, palanca de desmontaje, pasadores y raíl
+  const ss = new THREE.Shape();
+  ss.moveTo(-0.052, -0.002); ss.lineTo(-0.078, -0.002); ss.lineTo(-0.078, -0.0065); ss.lineTo(-0.064, -0.0065);
+  ss.quadraticCurveTo(-0.058, -0.009, -0.052, -0.006); ss.closePath();
+  sideExtrude(ss, 0.0016, 0.0004, M.barrel).position.x = -0.0143;
+  meshAt(new THREE.BoxGeometry(0.0014, 0.004, 0.008), M.barrel, root, -0.0141, -0.0095, -0.093);
+  for (const z of [-0.056, -0.086]) for (const sg of [-1, 1]) {
+    meshAt(new THREE.CircleGeometry(0.0016, 14), M.steel, root, sg * 0.01356, -0.0105, z).rotation.y = sg * Math.PI / 2;
+  }
+  for (const z of [-0.128, -0.143, -0.158]) meshAt(new THREE.BoxGeometry(0.0272, 0.0035, 0.0035), M.dark, root, 0, -0.0168, z);
+
+  // --- Cargador (en coordenadas del eje de la empuñadura) ---
+  const gripFrame = new THREE.Object3D();
+  gripFrame.position.set(0, -0.0578, 0.001);
+  gripFrame.rotation.x = -Math.atan2(0.027, 0.0715);
+  root.add(gripFrame); gripFrame.updateMatrix();
+  meshAt(new THREE.BoxGeometry(0.021, 0.074, 0.031), M.dark, magazine, 0, -0.002, 0);
+  lengthExtrude(rrect(0.031, 0.0075, 0.0025, 0, -0.042), 0.052, 0.0015, M.polymer, magazine, 0.026);
+  const topRound = makeCartridge(AMMO_9); topRound.position.set(0, 0.03, 0.013); magazine.add(topRound);
+  gripFrame.add(magazine);
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.0185, -0.19); root.add(muzzle);
+  return { root, slide, magazine, gripFrame, ejectPort, muzzle, hammer: null };
+}
+
+// Desert Eagle Mark XIX .50 AE con cañón de 6": 267 mm de largo, 32 mm de ancho, ~2 kg, acero inoxidable
+function buildDeagle() {
+  const root = new THREE.Group(), slide = new THREE.Group(), magazine = new THREE.Group(), ejectPort = new THREE.Object3D();
+  buildTarget = root;
+  const L = 0.267, SW = 0.031, SH = 0.035, SL = 0.115;   // largo total; ancho, alto y largo del bloque trasero de la corredera
+
+  // --- Corredera: bloque trasero alto + brazos que abrazan el cañón hasta la boca ---
+  {
+    const bev = 0.0024, g = bev * 0.6, c = 0.004, hw = SW / 2 - g, top = SH - g;
+    const sec = new THREE.Shape();
+    sec.moveTo(-hw, g); sec.lineTo(hw, g); sec.lineTo(hw, top - c); sec.lineTo(hw - c, top);
+    sec.lineTo(-hw + c, top); sec.lineTo(-hw, top - c); sec.closePath();
+    lengthExtrude(sec, SL, bev, M.stainless, slide, 0);
+    const low = new THREE.Shape(), lt = 0.0135 - 0.0011;
+    low.moveTo(-hw, g); low.lineTo(hw, g); low.lineTo(hw, lt); low.lineTo(-hw, lt); low.closePath();
+    lengthExtrude(low, L - SL + 0.004, 0.0018, M.stainless, slide, -SL + 0.004);
+  }
+  // Estrías traseras
+  const grooveGeo = new THREE.PlaneGeometry(0.0013, 0.024);
+  for (let i = 0; i < 11; i++) for (const sg of [-1, 1]) {
+    meshAt(grooveGeo, M.dark, slide, sg * (SW / 2 + 0.00008), 0.0175, -0.006 - i * 0.0036).rotation.y = sg * Math.PI / 2;
+  }
+  // Cara trasera: ranura del martillo y aguja percutora
+  meshAt(new THREE.PlaneGeometry(0.009, 0.018), M.dark, slide, 0, 0.011, 0.0003);
+  meshAt(new THREE.CircleGeometry(0.0014, 12), M.steel, slide, 0, 0.024, 0.0003);
+  // Seguros ambidiestros en la corredera
+  const sf = new THREE.Shape();
+  sf.moveTo(-0.018, 0.017); sf.lineTo(-0.006, 0.017); sf.quadraticCurveTo(0.004, 0.019, 0.006, 0.027);
+  sf.lineTo(0.0, 0.029); sf.quadraticCurveTo(-0.004, 0.024, -0.018, 0.027); sf.closePath();
+  for (const sg of [-1, 1]) sideExtrude(sf, 0.003, 0.0006, M.blackSteel, slide).position.x = sg * (SW / 2 + 0.0012);
+  // Alza de combate con muesca cuadrada y dos puntos blancos
+  const rs = new THREE.Shape(), rw = 0.008, rb = SH - 0.0006, rt = SH + 0.011, nw = 0.0021, nd = rt - 0.004;
+  rs.moveTo(-rw, rb); rs.lineTo(rw, rb); rs.lineTo(rw, rt); rs.lineTo(nw, rt); rs.lineTo(nw, nd);
+  rs.lineTo(-nw, nd); rs.lineTo(-nw, rt); rs.lineTo(-rw, rt); rs.closePath();
+  lengthExtrude(rs, 0.009, 0.0006, M.blackSteel, slide, -0.004);
+  for (const sg of [-1, 1]) meshAt(new THREE.CircleGeometry(0.0011, 14), M.white, slide, sg * 0.0052, rt - 0.0028, -0.0039);
+  // Ventana de expulsión (lado derecho)
+  meshAt(new THREE.PlaneGeometry(0.034, 0.013), M.dark, slide, SW / 2 + 0.0001, 0.021, -0.078).rotation.y = Math.PI / 2;
+  meshAt(new THREE.BoxGeometry(0.0006, 0.0105, 0.03), M.barrel, slide, SW / 2 - 0.0008, 0.021, -0.078);
+  ejectPort.position.set(0.017, 0.028, -0.078); slide.add(ejectPort);
+  // Boca de los brazos: las dos guías de los muelles recuperadores
+  for (const sg of [-1, 1]) meshAt(new THREE.CircleGeometry(0.0022, 14), M.steel, slide, sg * 0.0068, 0.0062, -L - 0.0003).rotation.y = Math.PI;
+  root.add(slide);
+
+  // --- Cañón fijo de perfil triangular con raíl Picatinny ---
+  const bs = new THREE.Shape();
+  bs.moveTo(-0.0152, 0.0135); bs.lineTo(0.0152, 0.0135); bs.lineTo(0.0152, 0.019); bs.lineTo(0.0078, 0.0395);
+  bs.lineTo(-0.0078, 0.0395); bs.lineTo(-0.0152, 0.019); bs.closePath();
+  lengthExtrude(bs, L - SL + 0.002, 0.0016, M.stainless, root, -SL + 0.002);
+  const railLen = L - SL - 0.03, railZ = -SL - 0.006 - railLen / 2;
+  meshAt(new THREE.BoxGeometry(0.0156, 0.005, railLen), M.stainless, root, 0, 0.0425, railZ);
+  for (let z = -SL - 0.012; z > -SL - 0.006 - railLen + 0.004; z -= 0.01) meshAt(new THREE.BoxGeometry(0.0158, 0.0024, 0.0032), M.dark, root, 0, 0.0442, z);
+  // Boca: corona y ánima de 12,7 mm
+  meshAt(new THREE.CylinderGeometry(0.0085, 0.0085, 0.003, 32), M.barrel, root, 0, 0.026, -L - 0.0005).rotation.x = Math.PI / 2;
+  meshAt(new THREE.CircleGeometry(0.0064, 28), M.dark, root, 0, 0.026, -L - 0.0021).rotation.y = Math.PI;
+  // Punto de mira con punto blanco
+  lengthExtrude(rrect(0.0036, 0.009, 0.0008, 0, 0.0435), 0.008, 0.0006, M.blackSteel, root, -L + 0.014);
+  meshAt(new THREE.CircleGeometry(0.0011, 14), M.white, root, 0, 0.0455, -L + 0.0141);
+  // Grabado en la cara inclinada izquierda del cañón
+  const engr = canvasTex(512, (x) => {
+    x.clearRect(0, 0, 512, 512); x.textBaseline = 'middle';
+    x.font = '900 40px Arial, sans-serif';
+    x.fillStyle = 'rgba(0,0,0,0.6)'; x.fillText('DESERT EAGLE', 12, 258);
+    x.fillStyle = '#b9bcc2'; x.fillText('DESERT EAGLE', 10, 256);
+    x.font = '700 28px Arial, sans-serif';
+    x.fillStyle = 'rgba(0,0,0,0.6)'; x.fillText('.50 A.E.', 382, 260);
+    x.fillStyle = '#b9bcc2'; x.fillText('.50 A.E.', 380, 258);
+  }, true);
+  engr.wrapS = engr.wrapT = THREE.ClampToEdgeWrapping; engr.repeat.set(1, 0.13); engr.offset.set(0, 0.435);
+  const n = new THREE.Vector3(-0.941, 0.34, 0), up = new THREE.Vector3(0.34, 0.941, 0);
+  const plate = meshAt(new THREE.PlaneGeometry(0.1, 0.0068), new THREE.MeshStandardMaterial({ map: engr, transparent: true, metalness: 0.6, roughness: 0.5 }), root, -0.0126, 0.0297, -(SL + (L - SL) / 2));
+  plate.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(new THREE.Vector3().crossVectors(up, n), up, n));
+
+  // --- Armazón de acero ---
+  const fr = new THREE.Shape();
+  fr.moveTo(0.004, 0.0); fr.lineTo(-0.232, 0.0); fr.quadraticCurveTo(-0.238, 0.0, -0.238, -0.006);
+  fr.lineTo(-0.236, -0.019); fr.quadraticCurveTo(-0.235, -0.024, -0.228, -0.024);
+  fr.lineTo(-0.056, -0.024); fr.quadraticCurveTo(-0.049, -0.025, -0.047, -0.034);
+  fr.lineTo(0.010, -0.034); fr.lineTo(0.020, -0.018); fr.quadraticCurveTo(0.028, -0.006, 0.018, -0.004);
+  fr.lineTo(0.010, -0.004); fr.closePath();
+  sideExtrude(fr, 0.030, 0.002, M.stainless);
+  // Empuñadura (acero) + cachas de goma envolventes
+  const gp = new THREE.Shape();
+  gp.moveTo(-0.047, -0.030); gp.quadraticCurveTo(-0.036, -0.072, -0.0215, -0.1105); gp.lineTo(-0.0193, -0.1146);
+  gp.lineTo(0.0397, -0.0954); gp.quadraticCurveTo(0.0425, -0.0935, 0.0415, -0.089);
+  gp.quadraticCurveTo(0.030, -0.055, 0.016, -0.022); gp.lineTo(-0.040, -0.025); gp.closePath();
+  sideExtrude(gp, 0.029, 0.002, M.stainless);
+  const pn = new THREE.Shape();
+  pn.moveTo(-0.046, -0.036); pn.quadraticCurveTo(-0.036, -0.072, -0.0215, -0.1105); pn.lineTo(-0.0193, -0.1146);
+  pn.lineTo(0.0397, -0.0954); pn.quadraticCurveTo(0.0425, -0.0935, 0.0415, -0.089);
+  pn.quadraticCurveTo(0.030, -0.055, 0.017, -0.030); pn.closePath();
+  sideExtrude(pn, 0.035, 0.003, M.rubber);   // goma envolvente
+  // Guardamonte grande de frente redondeado
+  const tg = new THREE.Shape();
+  tg.moveTo(-0.048, -0.032); tg.quadraticCurveTo(-0.050, -0.056, -0.064, -0.057); tg.lineTo(-0.098, -0.057);
+  tg.quadraticCurveTo(-0.118, -0.057, -0.118, -0.040); tg.lineTo(-0.117, -0.023); tg.lineTo(-0.110, -0.023);
+  tg.lineTo(-0.110, -0.040); tg.quadraticCurveTo(-0.110, -0.050, -0.098, -0.050); tg.lineTo(-0.064, -0.050);
+  tg.quadraticCurveTo(-0.057, -0.050, -0.055, -0.034); tg.closePath();
+  sideExtrude(tg, 0.012, 0.0016, M.stainless);
+  // Gatillo
+  const tr = new THREE.Shape();
+  tr.moveTo(-0.077, -0.024); tr.quadraticCurveTo(-0.087, -0.037, -0.080, -0.050); tr.lineTo(-0.076, -0.050);
+  tr.quadraticCurveTo(-0.081, -0.037, -0.072, -0.024); tr.closePath();
+  sideExtrude(tr, 0.007, 0.0012, M.blackSteel);
+  // Retén de corredera, botón del cargador, palanca de desmontaje del cañón y pasadores
+  const st = new THREE.Shape();
+  st.moveTo(-0.060, -0.004); st.lineTo(-0.092, -0.004); st.lineTo(-0.092, -0.010); st.lineTo(-0.074, -0.010);
+  st.quadraticCurveTo(-0.066, -0.013, -0.060, -0.009); st.closePath();
+  sideExtrude(st, 0.0018, 0.0005, M.blackSteel).position.x = -0.0159;
+  meshAt(new THREE.CylinderGeometry(0.0035, 0.0035, 0.003, 18), M.blackSteel, root, -0.0158, -0.037, -0.051).rotation.z = Math.PI / 2;
+  meshAt(new THREE.BoxGeometry(0.002, 0.006, 0.016), M.blackSteel, root, -0.0158, -0.012, -0.205);
+  for (const [z, y] of [[-0.066, -0.016], [-0.1, -0.012], [0.014, -0.02]]) for (const sg of [-1, 1]) {
+    meshAt(new THREE.CircleGeometry(0.0017, 14), M.steel, root, sg * 0.01506, y, z).rotation.y = sg * Math.PI / 2;
+  }
+  // Martillo externo (pivota en el armazón; cae al disparar y la corredera lo vuelve a montar)
+  const hammer = new THREE.Group(); hammer.position.set(0, -0.003, 0.007); root.add(hammer);
+  const hs = new THREE.Shape();
+  hs.moveTo(-0.004, -0.003); hs.lineTo(0.004, -0.004); hs.lineTo(0.009, 0.010);
+  hs.quadraticCurveTo(0.014, 0.018, 0.019, 0.021); hs.lineTo(0.019, 0.026);
+  hs.quadraticCurveTo(0.010, 0.026, 0.003, 0.016); hs.lineTo(-0.003, 0.004); hs.closePath();
+  sideExtrude(hs, 0.008, 0.0012, M.blackSteel, hammer);
+
+  // --- Cargador de 7 cartuchos .50 AE ---
+  const gripFrame = new THREE.Object3D();
+  gripFrame.position.set(0, -0.0655, -0.00265);
+  gripFrame.rotation.x = -Math.atan2(0.0257, 0.079);
+  root.add(gripFrame); gripFrame.updateMatrix();
+  meshAt(new THREE.BoxGeometry(0.022, 0.08, 0.05), M.dark, magazine, 0, -0.002, 0);
+  lengthExtrude(rrect(0.030, 0.006, 0.002, 0, -0.0445), 0.058, 0.0015, M.stainless, magazine, 0.029);
+  const topRound = makeCartridge(AMMO_50); topRound.position.set(0, 0.034, 0.018); magazine.add(topRound);
+  gripFrame.add(magazine);
+
+  const muzzle = new THREE.Object3D(); muzzle.position.set(0, 0.026, -L - 0.004); root.add(muzzle);
+  return { root, slide, magazine, gripFrame, ejectPort, muzzle, hammer };
+}
+camera.add(gun);
+// Iluminación del arma: luz principal cálida arriba a la izquierda y contraluz frío a la derecha
+const gunLight = new THREE.PointLight(0xdde8ff, 0.5, 1.5, 1); gunLight.position.set(-0.1, 0.12, 0); camera.add(gunLight);
+for (const [col, int, px, py, pz] of [[0xfff2e0, 1.1, -0.6, 1.0, 0.4], [0x8fb4ff, 0.9, 1.0, 0.4, -0.8]]) {
+  const dl = new THREE.DirectionalLight(col, int);
+  dl.position.set(px, py, pz); dl.target.position.set(0.1, -0.1, -0.3);
+  camera.add(dl); camera.add(dl.target);
+}
+
+// Fogonazo: varias texturas de estrella para que cada disparo sea distinto
+function flashTexture() {
+  return canvasTex(128, (x, sz) => {
+    const m = sz / 2, g = x.createRadialGradient(m, m, 0, m, m, m * 0.5);
+    g.addColorStop(0, 'rgba(255,250,230,1)'); g.addColorStop(0.3, 'rgba(255,200,110,0.9)'); g.addColorStop(1, 'rgba(255,120,30,0)');
+    x.fillStyle = g; x.fillRect(0, 0, sz, sz);
+    x.translate(m, m);
+    const rays = 5 + (Math.random() * 3 | 0);
+    for (let i = 0; i < rays; i++) {
+      x.rotate(Math.PI * 2 / rays + rand(-0.3, 0.3));
+      const len = m * rand(0.55, 0.98), w = rand(3, 7), lg = x.createLinearGradient(0, 0, len, 0);
+      lg.addColorStop(0, 'rgba(255,230,160,0.95)'); lg.addColorStop(1, 'rgba(255,140,40,0)');
+      x.fillStyle = lg; x.beginPath(); x.moveTo(0, -w); x.lineTo(len, 0); x.lineTo(0, w); x.fill();
+    }
+  }, true);
+}
+const flashTexs = [flashTexture(), flashTexture(), flashTexture()];
+const muzzleFlash = new THREE.Sprite(new THREE.SpriteMaterial({ map: flashTexs[0], blending: THREE.AdditiveBlending, depthWrite: false, transparent: true, opacity: 0 }));
+muzzleFlash.scale.setScalar(0.12);
+const flashLight = new THREE.PointLight(0xffa040, 0, 1.2, 1.5);
+
+// Humo de la boca tras cada disparo
+function muzzleSmoke(count = 3) {
+  const origin = new THREE.Vector3(), dir = new THREE.Vector3();
+  muzzle.getWorldPosition(origin); camera.getWorldDirection(dir);
+  for (let i = 0; i < count; i++) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: 0xa7adb6, transparent: true, depthWrite: false, opacity: 0 }));
+    sp.position.copy(origin).addScaledVector(dir, 0.02 + i * 0.03);
+    const v = dir.clone().multiplyScalar(rand(0.2, 0.6)).add(new THREE.Vector3(rand(-0.05, 0.05), rand(0.08, 0.2), rand(-0.05, 0.05)));
+    scene.add(sp);
+    const life = rand(0.7, 1.1), s0 = rand(0.02, 0.04), rot = rand(-1, 1);
+    effects.push({ life, max: life, update(dt) {
+      const k = 1 - this.life / this.max;
+      sp.position.addScaledVector(v, dt); v.multiplyScalar(0.96);
+      sp.scale.setScalar(s0 + k * 0.22);
+      sp.material.opacity = 0.16 * Math.sin(Math.min(1, k * 4) * Math.PI / 2) * (1 - k);
+      sp.material.rotation += rot * dt;
+    }, dispose() { scene.remove(sp); sp.material.dispose(); } });
+  }
+}
+
+// Retroceso con muelles amortiguados, golpe de cámara y balanceo por el movimiento del ratón
+const recoil = { z: 0, vz: 0, rx: 0, vrx: 0, ry: 0, vry: 0, rz: 0, vrz: 0 };
+const view = { p: 0, vp: 0, y: 0, vy: 0 };
+const sway = { x: 0, y: 0 };
+let mouseDX = 0, mouseDY = 0;
+const gunBase = new THREE.Vector3(0.11, -0.105, -0.29);
+let gunBaseRotX = 0;
+function spring(o, k, v, stiff, damp, h) { o[v] += (-stiff * o[k] - damp * o[v]) * h; o[k] += o[v] * h; }
+
+// ---------- Armas disponibles ----------
+const WEAPONS = {
+  glock: {
+    id: 'glock', key: 1, name: 'GLOCK 17', caliber: '9×19 mm', magSize: 17, fireDelay: 0.16, damage: 1,
+    reload: 1.05, reloadEmpty: 1.25, times: { magOut: 0.07, magIn: 0.52, slide: 0.76 },
+    rest: new THREE.Vector3(0.11, -0.105, -0.29), restRot: new THREE.Euler(0, 0.05, 0), slideTravel: 0.03,
+    recoil: { z: [1.5, 1.9], rx: [15, 19], ry: 2.5, rz: 4, view: [0.16, 0.2] },
+    flash: [0.09, 0.14], flashLight: 8, smoke: 3, shell: AMMO_9.caseGeo, shellSpeed: 1,
+    stats: { 'Daño': 0.3, 'Cadencia': 0.9, 'Control': 0.9 },
+  },
+  deagle: {
+    id: 'deagle', key: 2, name: 'DESERT EAGLE', caliber: '.50 AE', magSize: 7, fireDelay: 0.38, damage: 3,
+    reload: 1.3, reloadEmpty: 1.6, times: { magOut: 0.08, magIn: 0.64, slide: 0.98 },
+    // Como en CS:GO: más grande en pantalla y girada hacia el centro para ver su costado
+    rest: new THREE.Vector3(0.1, -0.108, -0.3), restRot: new THREE.Euler(0.02, 0.15, 0.06), slideTravel: 0.036,
+    recoil: { z: [2.6, 3.0], rx: [26, 30], ry: 5, rz: 9, view: [0.36, 0.42] },
+    flash: [0.2, 0.28], flashLight: 14, smoke: 6, shell: AMMO_50.caseGeo, shellSpeed: 1.2,
+    stats: { 'Daño': 1, 'Cadencia': 0.35, 'Control': 0.3 },
+  },
+};
+for (const w of Object.values(WEAPONS)) {
+  w.model = w.id === 'glock' ? buildGlock() : buildDeagle();
+  w.model.root.visible = false;
+  gun.add(w.model.root);
+  // Cargador de repuesto que sube durante la recarga, con su trayectoria en coordenadas del arma
+  w.newMag = new THREE.Group(); w.handMag = w.model.magazine.clone(true);
+  w.newMag.add(w.handMag); w.newMag.visible = false; w.model.root.add(w.newMag);
+  const G = (y) => new THREE.Vector3(0, y, 0).applyMatrix4(w.model.gripFrame.matrix);
+  w.magQuat = w.model.gripFrame.quaternion.clone();
+  w.magTrack = [{ t: 0, p: G(-0.32) }, { t: 0.14, p: G(-0.32) }, { t: w.times.magIn - 0.12, p: G(-0.1) }, { t: w.times.magIn, p: G(0) }, { t: 99, p: G(0) }];
+}
+let current = WEAPONS.glock;
+function equip(id) {
+  current.model.root.visible = false;
+  current = WEAPONS[id] || WEAPONS.glock;
+  const m = current.model;
+  m.root.visible = true;
+  slide = m.slide; magazine = m.magazine; ejectPort = m.ejectPort; muzzle = m.muzzle; gunGrip = m.gripFrame;
+  newMag = current.newMag; handMag = current.handMag;
+  muzzle.add(muzzleFlash); muzzle.add(flashLight);
+}
+
+// Cargador vacío que cae al suelo
+function dropMagazine() {
+  const m = magazine.clone(true);
+  magazine.getWorldPosition(m.position); magazine.getWorldQuaternion(m.quaternion);
+  scene.add(m);
+  const v = new THREE.Vector3(0, -1.2, 0).applyQuaternion(m.quaternion);
+  const spin = new THREE.Vector3(rand(-3, 3), rand(-2, 2), rand(-3, 3));
+  effects.push({ life: 3, max: 3, update(dt) {
+    // Sin suelo: cae al vacío
+    v.y -= 9.8 * dt; m.position.addScaledVector(v, dt);
+    m.rotation.x += spin.x * dt; m.rotation.y += spin.y * dt; m.rotation.z += spin.z * dt;
+  }, dispose() { scene.remove(m); } });
+}
+
+// Casquillos de 9 mm expulsados
+const _q = new THREE.Quaternion();
+function ejectShell() {
+  const s = new THREE.Mesh(current.shell, M.brass);
+  ejectPort.getWorldPosition(s.position);
+  camera.getWorldQuaternion(_q);
+  const v = new THREE.Vector3(rand(1.2, 1.8), rand(1.4, 2.0), rand(0.2, 0.6)).multiplyScalar(current.shellSpeed).applyQuaternion(_q);
+  const spin = new THREE.Vector3(rand(-20, 20), rand(-20, 20), rand(-20, 20));
+  s.quaternion.copy(_q); s.rotateZ(Math.PI / 2);
+  scene.add(s);
+  effects.push({ life: 1.4, max: 1.4, update(dt) {
+    v.y -= 9.8 * dt; s.position.addScaledVector(v, dt);
+    s.rotation.x += spin.x * dt; s.rotation.y += spin.y * dt; s.rotation.z += spin.z * dt;
+  }, dispose() { scene.remove(s); } });
+}
+
+// ---------- Tipos de proyectil ----------
+// Radios reales: pelota de tenis ≈ 0.034 m, balón de fútbol ≈ 0.11 m
+const TYPES = {
+  normal:   { color: 0xff8a1f, radius: 0.08,  speed: 1.0,  hp: 1, score: 100, level: 1, weight: 5, name: 'Normal' },
+  fast:     { color: 0xff2d55, radius: 0.045, speed: 1.6,  hp: 1, score: 150, level: 2, weight: 3, name: 'Rápido' },
+  zigzag:   { color: 0x39ff88, radius: 0.07,  speed: 0.9,  hp: 1, score: 200, level: 3, weight: 3, name: 'Zigzag', zig: true },
+  heavy:    { color: 0xb04dff, radius: 0.11,  speed: 0.7,  hp: 3, score: 300, level: 4, weight: 2, name: 'Blindado' },
+  splitter: { color: 0x22d3ff, radius: 0.1,   speed: 0.85, hp: 1, score: 250, level: 5, weight: 2, name: 'Divisor', splits: true },
+  mini:     { color: 0x22d3ff, radius: 0.045, speed: 1.35, hp: 1, score: 75,  level: 99, weight: 0, name: 'Fragmento' },
+};
+const NEW_TYPE_MSG = { 2: '¡Nuevo: proyectiles RÁPIDOS!', 3: '¡Nuevo: proyectiles ZIGZAG!', 4: '¡Nuevo: BLINDADOS (3 impactos)!', 5: '¡Nuevo: DIVISORES!', 6: 'Oleadas múltiples', 8: 'Te atacan por la espalda. ¡Vigila el radar!' };
+const LEVEL_TIME = 20; // segundos por nivel
+
+function difficulty(level) {
+  return {
+    interval: Math.max(0.3, 2.2 * Math.pow(0.86, level - 1)),
+    speed: Math.min(17, 4 + (level - 1) * 1.05),
+    spread: Math.min(Math.PI, THREE.MathUtils.degToRad(28 + (level - 1) * 19)), // semiángulo horizontal
+    maxHeight: Math.min(9, 3 + level * 0.5),
+  };
+}
+
+// ---------- Estado ----------
+const state = {
+  mode: 'menu', score: 0, level: 1, time: 0, spawnTimer: 1.2, combo: 0, bestCombo: 0,
+  shots: 0, hits: 0, kills: 0, shake: 0, fireCooldown: 0, mouseDown: false,
+  ammo: 17, reloading: 0, reloadTotal: 0, reloadStage: 0, reloadEmpty: false, slideLocked: false,
+  switching: 0, switchTo: null, switchDone: false, ammoBy: {}, lockedBy: {}, inspect: 0,
+  best: store.get('interceptor-best', 0),
+};
+// ---------- Ajustes del jugador ----------
+const DEFAULT_SETTINGS = {
+  sens: 1, fov: 75, weapon: 'glock',
+  xh: { style: 'cross-dot', color: '#e6f1ff', size: 7, thick: 2, gap: 4, alpha: 1, outline: true },
+};
+function loadSettings() {
+  const out = JSON.parse(JSON.stringify(DEFAULT_SETTINGS));
+  const saved = store.get('interceptor-settings', null);
+  if (saved) { Object.assign(out, saved); out.xh = { ...DEFAULT_SETTINGS.xh, ...(saved.xh || {}) }; }
+  else out.sens = store.get('interceptor-sens', out.sens);   // ajuste de versiones anteriores
+  return out;
+}
+let settings = loadSettings();
+const saveSettings = () => store.set('interceptor-settings', settings);
+camera.fov = settings.fov; camera.updateProjectionMatrix();
+let yaw = 0, pitch = 0;
+const projectiles = [];
+const effects = [];
+$('best').textContent = state.best;
+
+// ---------- Proyectiles ----------
+const sphereGeo = new THREE.SphereGeometry(1, 24, 16);
+const shellGeo = new THREE.IcosahedronGeometry(1, 1);
+const TRAIL = 10;
+
+function spawnProjectile(typeKey, from = null) {
+  const T = TYPES[typeKey], d = difficulty(state.level);
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: T.color, emissive: T.color, emissiveIntensity: 0.7, roughness: 0.35, metalness: 0.2 });
+  const ball = new THREE.Mesh(sphereGeo, mat); ball.scale.setScalar(T.radius); group.add(ball);
+  let shell = null;
+  if (typeKey === 'heavy') {
+    shell = new THREE.Mesh(shellGeo, new THREE.MeshBasicMaterial({ color: 0xe0b0ff, wireframe: true, transparent: true, opacity: 0.8 }));
+    shell.scale.setScalar(T.radius * 1.35); group.add(shell);
+  }
+  const glow = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color: T.color, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true }));
+  glow.scale.setScalar(Math.max(0.5, T.radius * 9)); group.add(glow);
+
+  let pos;
+  if (from) pos = from.clone();
+  else {
+    const a = rand(-d.spread, d.spread), dist = rand(22, 28);
+    pos = new THREE.Vector3(Math.sin(a) * dist, rand(0.6, d.maxHeight), -Math.cos(a) * dist);
+  }
+  const target = HEAD.clone().add(new THREE.Vector3(rand(-0.2, 0.2), rand(-0.2, 0.2), rand(-0.2, 0.2)));
+  const dir = target.sub(pos).normalize();
+  const vel = dir.clone().multiplyScalar(d.speed * T.speed * (from ? 1 : rand(0.9, 1.1)));
+
+  // Estela
+  const trailPos = new Float32Array(TRAIL * 3), trailCol = new Float32Array(TRAIL * 3);
+  const c = new THREE.Color(T.color);
+  for (let i = 0; i < TRAIL; i++) {
+    trailPos.set([pos.x, pos.y, pos.z], i * 3);
+    const k = 1 - i / TRAIL; trailCol.set([c.r * k, c.g * k, c.b * k], i * 3);
+  }
+  const tg = new THREE.BufferGeometry();
+  tg.setAttribute('position', new THREE.BufferAttribute(trailPos, 3));
+  tg.setAttribute('color', new THREE.BufferAttribute(trailCol, 3));
+  const trail = new THREE.Line(tg, new THREE.LineBasicMaterial({ vertexColors: true, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  trail.frustumCulled = false;
+  scene.add(trail);
+
+  group.position.copy(pos);
+  scene.add(group);
+  const perp = new THREE.Vector3().crossVectors(dir, new THREE.Vector3(0, 1, 0)).normalize();
+  const perp2 = new THREE.Vector3().crossVectors(perp, dir).normalize();
+  projectiles.push({
+    key: typeKey, T, group, ball, shell, glow, mat, trail, base: pos.clone(), vel, hp: T.hp, t: rand(0, 10),
+    perp, perp2, startDist: pos.distanceTo(HEAD), zigAmp: rand(1.2, 2.2), zigFreq: rand(2.5, 4), flash: 0,
+    spin: new THREE.Vector3(rand(-4, 4), rand(-4, 4), rand(-4, 4)),
+  });
+}
+
+function pickType() {
+  const avail = Object.entries(TYPES).filter(([, T]) => T.level <= state.level);
+  let total = avail.reduce((s, [, T]) => s + T.weight, 0), r = Math.random() * total;
+  for (const [k, T] of avail) { if ((r -= T.weight) <= 0) return k; }
+  return 'normal';
+}
+
+function removeProjectile(p) {
+  scene.remove(p.group); scene.remove(p.trail);
+  p.mat.dispose(); p.glow.material.dispose(); p.trail.geometry.dispose(); p.trail.material.dispose();
+  if (p.shell) p.shell.material.dispose();
+  projectiles.splice(projectiles.indexOf(p), 1);
+}
+
+// ---------- Efectos ----------
+function explosion(pos, color, n = 40, power = 6) {
+  const positions = new Float32Array(n * 3), vels = [];
+  for (let i = 0; i < n; i++) {
+    positions.set([pos.x, pos.y, pos.z], i * 3);
+    vels.push(new THREE.Vector3().randomDirection().multiplyScalar(rand(0.3, 1) * power));
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const pts = new THREE.Points(g, new THREE.PointsMaterial({ color, size: 0.12, map: glowTex, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  scene.add(pts);
+  const fl = new THREE.Sprite(new THREE.SpriteMaterial({ map: glowTex, color, blending: THREE.AdditiveBlending, transparent: true, depthWrite: false }));
+  fl.position.copy(pos); scene.add(fl);
+  effects.push({ life: 0.8, max: 0.8, update(dt) {
+    const a = g.attributes.position.array;
+    for (let i = 0; i < n; i++) { vels[i].multiplyScalar(0.94); vels[i].y -= 6 * dt; a[i*3] += vels[i].x*dt; a[i*3+1] += vels[i].y*dt; a[i*3+2] += vels[i].z*dt; }
+    g.attributes.position.needsUpdate = true;
+    const k = this.life / this.max;
+    pts.material.opacity = k;
+    fl.scale.setScalar((1 - k) * 3 + 0.5); fl.material.opacity = Math.max(0, k * 2 - 1);
+  }, dispose() { scene.remove(pts); scene.remove(fl); g.dispose(); pts.material.dispose(); fl.material.dispose(); } });
+}
+
+
+const popups = [];
+function popup(pos, text, color) {
+  const el = document.createElement('div');
+  el.className = 'popup'; el.textContent = text; el.style.color = color;
+  document.body.appendChild(el);
+  popups.push({ el, pos: pos.clone(), life: 0.8 });
+}
+
+let hitmarkerTimer = 0;
+function showHitmarker() { $('hitmarker').style.opacity = 1; hitmarkerTimer = 0.12; }
+
+// ---------- Disparo ----------
+const _ray = new THREE.Vector3(), _tmp = new THREE.Vector3(), _muz = new THREE.Vector3();
+const SWITCH_TIME = 0.5;   // bajar un arma y subir la otra
+const INSPECT_TIME = 2.6; // inspección del arma (tecla F), como en CS:GO
+
+function trigger() {
+  state.inspect = 0;
+  if (state.reloading > 0 || state.fireCooldown > 0 || state.switching > 0) return;
+  shoot();
+}
+
+function startReload() {
+  if (state.reloading > 0 || state.switching > 0 || state.ammo > current.magSize || state.mode !== 'playing') return;
+  state.inspect = 0;
+  state.reloadEmpty = state.ammo === 0;
+  state.reloadTotal = state.reloadEmpty ? current.reloadEmpty : current.reload;
+  state.reloading = state.reloadTotal;
+  state.reloadStage = 0;
+  state.mouseDown = false;
+  handMag.visible = true;
+}
+function cancelReload() {
+  if (state.reloading > 0) { state.reloading = 0; magazine.visible = true; }
+}
+
+// Momentos clave de la recarga (segundos, propios de cada arma)
+let gunJolt = 0;
+const RELOAD_EVENTS = [
+  { key: 'magOut', run: () => { sfx.magOut(); dropMagazine(); magazine.visible = false; } },
+  { key: 'magIn', run: () => { sfx.magIn(); magazine.visible = true; handMag.visible = false; gunJolt = 1; } },
+  { key: 'slide', run: () => { if (state.reloadEmpty) { sfx.slideRelease(current.id); state.slideLocked = false; gunJolt = 1.3; } } },
+];
+function poseNewMag(t) {
+  const tr = current.magTrack;
+  let i = 0;
+  while (i < tr.length - 2 && t > tr[i + 1].t) i++;
+  const a = tr[i], b = tr[i + 1];
+  newMag.position.lerpVectors(a.p, b.p, THREE.MathUtils.smoothstep(t, a.t, b.t));
+  newMag.quaternion.copy(current.magQuat);
+}
+
+function updateReload(dt) {
+  if (state.reloading <= 0) return;
+  state.reloading -= dt;
+  const t = state.reloadTotal - Math.max(0, state.reloading);
+  while (state.reloadStage < RELOAD_EVENTS.length && t >= current.times[RELOAD_EVENTS[state.reloadStage].key]) RELOAD_EVENTS[state.reloadStage++].run();
+  if (state.reloading <= 0) {
+    state.reloading = 0;
+    state.ammo = state.reloadEmpty ? current.magSize : current.magSize + 1;
+  }
+}
+
+// ---------- Cambio de arma ----------
+function requestSwitch(id) {
+  if (!WEAPONS[id]) return;
+  state.inspect = 0;
+  settings.weapon = id; saveSettings(); refreshWeaponCards();
+  if (id === current.id && state.switching <= 0) return;
+  if (state.mode === 'paused') { swapNow(id); return; }
+  if (state.mode !== 'playing') { equip(id); buildPips(); return; }
+  if (state.switching > 0) { state.switchTo = id; return; }
+  cancelReload();
+  state.switching = SWITCH_TIME; state.switchTo = id; state.switchDone = false; state.mouseDown = false;
+}
+// Cada arma conserva su munición y el estado de su corredera
+function swapNow(id) {
+  if (id === current.id) return;
+  cancelReload();
+  state.ammoBy[current.id] = state.ammo; state.lockedBy[current.id] = state.slideLocked;
+  equip(id);
+  state.ammo = state.ammoBy[id] ?? current.magSize; state.slideLocked = !!state.lockedBy[id];
+  buildPips(); sfx.draw();
+}
+function updateSwitch(dt) {
+  if (state.switching <= 0) return;
+  state.switching -= dt;
+  if (!state.switchDone && state.switching <= SWITCH_TIME / 2) { swapNow(state.switchTo); state.switchDone = true; }
+  if (state.switching < 0) state.switching = 0;
+}
+
+// Munición infinita: el HUD solo muestra el arma equipada
+function buildPips() {
+  $('ammo-name').textContent = current.name + ' · ' + current.caliber;
+}
+function updateAmmoHud() {}
+
+function shoot() {
+  state.shots++;
+  state.fireCooldown = current.fireDelay;
+  sfx.shoot(current.id);
+  // Retroceso: impulsos a los muelles del arma y un golpe de cámara, según el arma
+  const r = current.recoil;
+  recoil.vz += rand(...r.z); recoil.vrx += rand(...r.rx); recoil.vry += rand(-r.ry, r.ry); recoil.vrz += rand(-r.rz, r.rz);
+  view.vp += rand(...r.view); view.vy += rand(-0.05, 0.05) * r.view[0] / 0.16;
+  slide.position.z = current.slideTravel;
+  if (current.model.hammer) current.model.hammer.rotation.x = -0.9;   // el martillo cae; la corredera lo vuelve a montar
+  ejectShell();
+  muzzleFlash.material.map = flashTexs[Math.random() * flashTexs.length | 0];
+  muzzleFlash.material.opacity = 1; muzzleFlash.material.rotation = Math.random() * Math.PI * 2;
+  muzzleFlash.scale.setScalar(rand(...current.flash));
+  flashLight.intensity = current.flashLight;
+  muzzleSmoke(current.smoke);
+
+  camera.getWorldDirection(_ray);
+  const origin = camera.position;
+  let best = null, bestT = Infinity;
+  for (const p of projectiles) {
+    const c = p.group.position;
+    _tmp.subVectors(c, origin);
+    const t = _tmp.dot(_ray);
+    if (t < 0) continue;
+    const d2 = _tmp.lengthSq() - t * t;
+    // Hitbox algo más generosa que el tamaño visual para que el juego sea justo
+    const hr = p.T.radius * 2 + 0.12;
+    if (d2 < hr * hr && t < bestT) { bestT = t; best = p; }
+  }
+
+  if (!best) { state.combo = 0; return; }
+  state.hits++;
+  best.hp -= current.damage;   // la Desert Eagle atraviesa incluso el blindaje
+  showHitmarker();
+  if (best.hp > 0) {
+    sfx.armor(); best.flash = 0.12;
+    best.shell.scale.setScalar(best.T.radius * (1 + 0.15 * best.hp));
+    explosion(best.group.position, 0xe0b0ff, 10, 3);
+    return;
+  }
+  destroy(best);
+}
+
+function destroy(p) {
+  state.combo++; state.kills++;
+  state.bestCombo = Math.max(state.bestCombo, state.combo);
+  const mult = Math.min(4, 1 + Math.floor(state.combo / 5) * 0.5);
+  const pts = Math.round(p.T.score * mult * (1 + (state.level - 1) * 0.1));
+  state.score += pts;
+  sfx.hit(); sfx.boom();
+  const col = '#' + new THREE.Color(p.T.color).getHexString();
+  explosion(p.group.position, p.T.color);
+  popup(p.group.position, `+${pts}`, col);
+  const pos = p.group.position.clone();
+  removeProjectile(p);
+  if (p.T.splits) {
+    for (let i = 0; i < 2; i++) {
+      const off = new THREE.Vector3().randomDirection().multiplyScalar(0.8);
+      spawnProjectile('mini', pos.clone().add(off));
+    }
+  }
+}
+
+// ---------- Flujo del juego ----------
+function resetGame() {
+  while (projectiles.length) removeProjectile(projectiles[0]);
+  Object.assign(state, { score: 0, level: 1, time: 0, spawnTimer: 1.2, combo: 0, bestCombo: 0, shots: 0, hits: 0, kills: 0, shake: 0, fireCooldown: 0, reloading: 0, slideLocked: false, mouseDown: false, switching: 0, lockedBy: {} });
+  for (const w of Object.values(WEAPONS)) {
+    w.model.magazine.visible = true; w.model.slide.position.z = 0;
+    if (w.model.hammer) w.model.hammer.rotation.x = 0;
+  }
+  state.ammoBy = { glock: WEAPONS.glock.magSize, deagle: WEAPONS.deagle.magSize };
+  equip(settings.weapon);
+  state.ammo = current.magSize;
+  buildPips(); refreshWeaponCards();
+  yaw = 0; pitch = 0;
+}
+
+function startGame() {
+  audio();
+  resetGame();
+  state.mode = 'playing';
+  $('menu').classList.add('hidden'); $('over').classList.add('hidden'); $('pause').classList.add('hidden');
+  $('hud').style.display = 'block'; $('crosshair').style.display = 'block';
+  lockPointer();
+  showBanner('NIVEL 1', 'Dispara a los proyectiles antes de que te alcancen');
+}
+
+function gameOver(p) {
+  state.mode = 'over';
+  sfx.dead();
+  state.shake = 0.6;
+  $('flash').style.transition = 'none'; $('flash').style.opacity = 0.7;
+  requestAnimationFrame(() => { $('flash').style.transition = 'opacity 1.2s'; $('flash').style.opacity = 0; });
+  explosion(p.group.position, 0xff2d55, 80, 8);
+  const isBest = state.score > state.best;
+  if (isBest) { state.best = state.score; store.set('interceptor-best', state.best); $('best').textContent = state.best; }
+  $('s-score').textContent = state.score;
+  $('s-level').textContent = state.level;
+  $('s-time').textContent = fmtTime(state.time);
+  $('s-acc').textContent = (state.shots ? Math.round(state.hits / state.shots * 100) : 0) + '%';
+  $('s-kills').textContent = state.kills;
+  $('s-combo').textContent = state.bestCombo;
+  $('newbest').textContent = isBest && state.score > 0 ? '★ ¡NUEVO RÉCORD! ★' : '';
+  $('crosshair').style.display = 'none';
+  setTimeout(() => {
+    if (document.pointerLockElement) document.exitPointerLock();
+    $('over').classList.remove('hidden');
+  }, 1100);
+}
+
+let bannerTimeout = null;
+function showBanner(big, small = '') {
+  const b = $('banner');
+  b.querySelector('.big').textContent = big; b.querySelector('.small').textContent = small;
+  b.classList.add('show');
+  clearTimeout(bannerTimeout);
+  bannerTimeout = setTimeout(() => b.classList.remove('show'), 2200);
+}
+
+// ---------- Entrada ----------
+const canvasEl = renderer.domElement;
+// El navegador no deja recapturar el ratón hasta ~1 s después de soltarlo con ESC
+const RELOCK_DELAY = 1200;
+let resumeTimer = null;
+function lockPointer() {
+  try { const r = canvasEl.requestPointerLock(); if (r && r.catch) r.catch(onLockError); } catch { onLockError(); }
+}
+function onLockError() {
+  if (state.mode === 'playing' || state.mode === 'paused') pauseGame('No se pudo capturar el ratón. Vuelve a pulsar Continuar.');
+}
+function pauseGame(msg = 'Haz clic para volver a la acción.') {
+  state.mode = 'paused'; state.mouseDown = false;
+  $('pause-msg').textContent = msg;
+  mountSettings('pause-slot');
+  $('pause').classList.remove('hidden');
+  // Bloquea el botón durante el tiempo de espera del navegador para que el clic no falle
+  const btn = $('resume');
+  btn.disabled = true; btn.textContent = 'ESPERA…';
+  clearTimeout(resumeTimer);
+  resumeTimer = setTimeout(() => { btn.disabled = false; btn.textContent = 'CONTINUAR'; }, RELOCK_DELAY);
+}
+document.addEventListener('pointerlockerror', onLockError);
+document.addEventListener('pointerlockchange', () => {
+  const locked = document.pointerLockElement === canvasEl;
+  if (locked) {
+    // Solo se reanuda cuando el ratón está realmente capturado
+    if (state.mode === 'paused' || state.mode === 'playing') {
+      state.mode = 'playing';
+      $('pause').classList.add('hidden');
+    }
+  } else if (state.mode === 'playing') {
+    pauseGame();
+  }
+});
+// Si por lo que sea se pierde la captura, un clic en la escena la recupera
+canvasEl.addEventListener('click', () => {
+  if (state.mode === 'playing' && document.pointerLockElement !== canvasEl) lockPointer();
+});
+document.addEventListener('mousemove', (e) => {
+  if (state.mode !== 'playing' || document.pointerLockElement !== canvasEl) return;
+  const k = 0.0022 * settings.sens;
+  mouseDX += e.movementX; mouseDY += e.movementY;
+  yaw -= e.movementX * k;
+  pitch = THREE.MathUtils.clamp(pitch - e.movementY * k, -1.45, 1.45);
+});
+document.addEventListener('mousedown', (e) => {
+  if (e.button !== 0 || state.mode !== 'playing') return;
+  state.mouseDown = true;
+  trigger();
+});
+document.addEventListener('mouseup', (e) => { if (e.button === 0) state.mouseDown = false; });
+document.addEventListener('keydown', (e) => {
+  if (e.repeat) return;
+  if (e.code === 'KeyF' && state.mode === 'playing' && state.reloading <= 0 && state.switching <= 0) state.inspect = INSPECT_TIME;
+  if (state.mode === 'playing') for (const w of Object.values(WEAPONS)) if (e.code === 'Digit' + w.key) requestSwitch(w.id);
+});
+
+$('start').addEventListener('click', startGame);
+$('restart').addEventListener('click', startGame);
+$('resume').addEventListener('click', () => {
+  if ($('resume').disabled) return;
+  lockPointer();   // el juego se reanuda en 'pointerlockchange' cuando la captura se confirma
+});
+
+// ---------- Mira personalizable ----------
+const XH_STYLES = [
+  { id: 'cross', name: 'Cruz' }, { id: 'cross-dot', name: 'Cruz + punto' }, { id: 't', name: 'En T' },
+  { id: 'dot', name: 'Punto' }, { id: 'circle', name: 'Círculo' }, { id: 'circle-dot', name: 'Círculo + punto' },
+];
+const XH_COLORS = ['#e6f1ff', '#39ff88', '#36c8ff', '#ffe14d', '#ff8a1f', '#ff2d55', '#ff4dff'];
+
+// Tamaño en px CSS que necesita el canvas para que quepa la mira entera
+const xhExtent = (x) => Math.ceil(2 * (x.gap + x.size + x.thick) + 8);
+
+function drawCrosshair(cv, x, cssSize = xhExtent(x)) {
+  const dpr = Math.min(devicePixelRatio || 1, 2);
+  cv.width = cv.height = Math.round(cssSize * dpr);
+  cv.style.width = cv.style.height = cssSize + 'px';
+  const c = cv.getContext('2d');
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, cssSize, cssSize);
+  const m = cssSize / 2, t = x.thick, L = x.size, g = x.gap, st = x.style;
+  // Brazos como rectángulos (derecha, izquierda, abajo, arriba)
+  const arms = [];
+  if (st === 'cross' || st === 'cross-dot' || st === 't') {
+    arms.push([m + g, m - t / 2, L, t], [m - g - L, m - t / 2, L, t], [m - t / 2, m + g, t, L]);
+    if (st !== 't') arms.push([m - t / 2, m - g - L, t, L]);
+  }
+  const hasDot = st === 'dot' || st.endsWith('-dot');
+  const hasCircle = st.startsWith('circle');
+  const radius = Math.max(3, g + L / 2);
+  const dotR = st === 'dot' ? Math.max(1.5, t * 1.1) : Math.max(1, t * 0.7);
+  const paint = (color, grow) => {
+    c.fillStyle = color; c.strokeStyle = color;
+    for (const [ax, ay, w, h] of arms) c.fillRect(ax - grow, ay - grow, w + grow * 2, h + grow * 2);
+    if (hasCircle) { c.lineWidth = t + grow * 2; c.beginPath(); c.arc(m, m, radius, 0, Math.PI * 2); c.stroke(); }
+    if (hasDot) { c.beginPath(); c.arc(m, m, dotR + grow, 0, Math.PI * 2); c.fill(); }
+  };
+  c.globalAlpha = x.alpha;
+  if (x.outline) paint('rgba(0,0,0,0.85)', 1);
+  paint(x.color, 0);
+}
+
+function applySettings() {
+  camera.fov = settings.fov; camera.updateProjectionMatrix();
+  drawCrosshair($('crosshair'), settings.xh);
+  drawCrosshair($('xh-preview'), settings.xh, 116);
+  $('out-sens').textContent = settings.sens.toFixed(2);
+  $('out-fov').textContent = settings.fov + '°';
+  $('out-size').textContent = settings.xh.size;
+  $('out-thick').textContent = settings.xh.thick;
+  $('out-gap').textContent = settings.xh.gap;
+  $('out-alpha').textContent = Math.round(settings.xh.alpha * 100) + '%';
+  document.querySelectorAll('#xh-styles button').forEach((b) => b.classList.toggle('active', b.dataset.style === settings.xh.style));
+  document.querySelectorAll('#xh-swatches button').forEach((b) => b.classList.toggle('active', b.dataset.color === settings.xh.color));
+  saveSettings();
+}
+function syncInputs() {
+  $('set-sens').value = settings.sens; $('set-fov').value = settings.fov;
+  $('set-size').value = settings.xh.size; $('set-thick').value = settings.xh.thick;
+  $('set-gap').value = settings.xh.gap; $('set-alpha').value = settings.xh.alpha;
+  $('set-outline').checked = settings.xh.outline; $('set-color').value = settings.xh.color;
+}
+
+// Botones de estilo con su propio icono dibujado
+for (const st of XH_STYLES) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.style = st.id; b.title = st.name;
+  const icon = document.createElement('canvas');
+  b.append(icon, document.createTextNode(st.name));
+  drawCrosshair(icon, { style: st.id, color: '#e6f1ff', size: 5, thick: 1.5, gap: 3, alpha: 1, outline: false }, 30);
+  b.addEventListener('click', () => { settings.xh.style = st.id; applySettings(); });
+  $('xh-styles').appendChild(b);
+}
+for (const col of XH_COLORS) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.color = col; b.style.background = col; b.title = col;
+  b.addEventListener('click', () => { settings.xh.color = col; $('set-color').value = col; applySettings(); });
+  $('xh-swatches').appendChild(b);
+}
+const bindRange = (id, set) => $(id).addEventListener('input', (e) => { set(parseFloat(e.target.value)); applySettings(); });
+bindRange('set-sens', (v) => settings.sens = v);
+bindRange('set-fov', (v) => settings.fov = v);
+bindRange('set-size', (v) => settings.xh.size = v);
+bindRange('set-thick', (v) => settings.xh.thick = v);
+bindRange('set-gap', (v) => settings.xh.gap = v);
+bindRange('set-alpha', (v) => settings.xh.alpha = v);
+$('set-outline').addEventListener('change', (e) => { settings.xh.outline = e.target.checked; applySettings(); });
+$('set-color').addEventListener('input', (e) => { settings.xh.color = e.target.value; applySettings(); });
+$('set-reset').addEventListener('click', () => { settings = JSON.parse(JSON.stringify(DEFAULT_SETTINGS)); syncInputs(); applySettings(); });
+
+// El mismo panel se muestra en el menú principal o en la pausa
+function mountSettings(slotId) { $(slotId).appendChild($('settings')); }
+$('open-settings').addEventListener('click', () => {
+  const slot = $('menu-slot');
+  mountSettings('menu-slot');
+  const open = slot.classList.toggle('hidden') === false;
+  $('menu').querySelector('.card').classList.toggle('wide', open);
+  $('open-settings').textContent = open ? 'CERRAR AJUSTES' : 'AJUSTES';
+});
+for (const w of Object.values(WEAPONS)) {
+  const b = document.createElement('button');
+  b.type = 'button'; b.dataset.weapon = w.id;
+  b.innerHTML = `<span class="wkey">${w.key}</span><div class="wname">${w.name}</div><div class="wcal">${w.caliber} · munición infinita</div>` +
+    Object.entries(w.stats).map(([k, v]) => `<div class="wstat"><span>${k}</span><b style="--v:${Math.round(v * 100)}%"></b></div>`).join('');
+  b.addEventListener('click', () => requestSwitch(w.id));
+  $('weapon-cards').appendChild(b);
+}
+function refreshWeaponCards() {
+  document.querySelectorAll('#weapon-cards button').forEach((b) => b.classList.toggle('active', b.dataset.weapon === settings.weapon));
+}
+if (!WEAPONS[settings.weapon]) settings.weapon = 'glock';
+equip(settings.weapon);
+buildPips();
+refreshWeaponCards();
+syncInputs();
+applySettings();
+
+// ---------- Overlay 2D (flechas y radar) ----------
+const fx = $('fx'), fxc = fx.getContext('2d');
+const radar = $('radar'), rc = radar.getContext('2d');
+function resize() {
+  renderer.setSize(innerWidth, innerHeight);
+  camera.aspect = innerWidth / innerHeight; camera.updateProjectionMatrix();
+  const dpr = Math.min(devicePixelRatio, 2);
+  fx.width = innerWidth * dpr; fx.height = innerHeight * dpr;
+  fx.style.width = innerWidth + 'px'; fx.style.height = innerHeight + 'px';
+  fxc.setTransform(dpr, 0, 0, dpr, 0, 0);
+}
+addEventListener('resize', resize); resize();
+
+const _v = new THREE.Vector3();
+function drawOverlay() {
+  const W = innerWidth, H = innerHeight;
+  fxc.clearRect(0, 0, W, H);
+  if (state.mode !== 'playing' && state.mode !== 'paused') return;
+  for (const p of projectiles) {
+    _v.copy(p.group.position).applyMatrix4(camera.matrixWorldInverse);
+    const behind = _v.z > 0;
+    const ndc = p.group.position.clone().project(camera);
+    if (!behind && Math.abs(ndc.x) < 0.95 && Math.abs(ndc.y) < 0.92) continue;
+    let ang = Math.atan2(_v.y, _v.x);
+    if (behind && Math.abs(_v.x) < 0.01 && Math.abs(_v.y) < 0.01) ang = -Math.PI / 2;
+    const rx = W / 2 - 40, ry = H / 2 - 40;
+    const x = W / 2 + Math.cos(ang) * rx, y = H / 2 - Math.sin(ang) * ry;
+    const dist = p.group.position.distanceTo(HEAD);
+    const alpha = THREE.MathUtils.clamp(1.2 - dist / 25, 0.25, 1);
+    const size = 10 + (1 - Math.min(1, dist / 25)) * 12;
+    fxc.save();
+    fxc.translate(x, y); fxc.rotate(-ang);
+    fxc.globalAlpha = alpha;
+    fxc.fillStyle = '#' + new THREE.Color(p.T.color).getHexString();
+    fxc.shadowColor = fxc.fillStyle; fxc.shadowBlur = 12;
+    fxc.beginPath(); fxc.moveTo(size, 0); fxc.lineTo(-size * 0.6, size * 0.7); fxc.lineTo(-size * 0.6, -size * 0.7); fxc.closePath(); fxc.fill();
+    fxc.restore();
+  }
+
+  // Radar
+  const S = radar.width, c = S / 2, R = c - 10, range = 30;
+  rc.clearRect(0, 0, S, S);
+  rc.fillStyle = 'rgba(8,14,30,.7)'; rc.beginPath(); rc.arc(c, c, R, 0, Math.PI * 2); rc.fill();
+  rc.strokeStyle = 'rgba(54,200,255,.35)'; rc.lineWidth = 2;
+  for (const f of [1, 0.66, 0.33]) { rc.beginPath(); rc.arc(c, c, R * f, 0, Math.PI * 2); rc.stroke(); }
+  // Cono de visión
+  const half = THREE.MathUtils.degToRad(camera.fov / 2) * camera.aspect;
+  rc.fillStyle = 'rgba(54,200,255,.12)';
+  rc.beginPath(); rc.moveTo(c, c); rc.arc(c, c, R, -Math.PI / 2 - Math.min(half, 1.4), -Math.PI / 2 + Math.min(half, 1.4)); rc.closePath(); rc.fill();
+  const fwdX = -Math.sin(yaw), fwdZ = -Math.cos(yaw), rtX = Math.cos(yaw), rtZ = -Math.sin(yaw);
+  for (const p of projectiles) {
+    const px = p.group.position.x, pz = p.group.position.z;
+    const rx = (px * rtX + pz * rtZ) / range, ry = (px * fwdX + pz * fwdZ) / range;
+    let x = rx, y = ry; const l = Math.hypot(x, y); if (l > 1) { x /= l; y /= l; }
+    rc.fillStyle = '#' + new THREE.Color(p.T.color).getHexString();
+    rc.shadowColor = rc.fillStyle; rc.shadowBlur = 10;
+    rc.beginPath(); rc.arc(c + x * R, c - y * R, 6, 0, Math.PI * 2); rc.fill();
+  }
+  rc.shadowBlur = 0;
+  rc.fillStyle = '#fff'; rc.beginPath(); rc.moveTo(c, c - 9); rc.lineTo(c - 6, c + 6); rc.lineTo(c + 6, c + 6); rc.closePath(); rc.fill();
+}
+
+// ---------- Bucle principal ----------
+const clock = new THREE.Clock();
+const _pp = new THREE.Vector3();
+function update(dt) {
+  state.time += dt;
+
+  // Subida de nivel
+  const newLevel = 1 + Math.floor(state.time / LEVEL_TIME);
+  if (newLevel > state.level) {
+    state.level = newLevel;
+    sfx.level();
+    showBanner(`NIVEL ${state.level}`, NEW_TYPE_MSG[state.level] || 'Más rápido. Más proyectiles.');
+  }
+
+  // Aparición
+  const d = difficulty(state.level);
+  state.spawnTimer -= dt;
+  if (state.spawnTimer <= 0) {
+    let count = 1;
+    if (state.level >= 6 && Math.random() < 0.25) count++;
+    if (state.level >= 9 && Math.random() < 0.2) count++;
+    for (let i = 0; i < count; i++) spawnProjectile(pickType());
+    state.spawnTimer = d.interval * rand(0.8, 1.2);
+  }
+
+  // Disparo automático al mantener
+  state.fireCooldown -= dt;
+  if (state.mouseDown && state.ammo > 0) trigger();
+  updateReload(dt);
+  updateSwitch(dt);
+  if (state.inspect > 0) state.inspect = Math.max(0, state.inspect - dt);
+
+  // Movimiento de proyectiles
+  let nearest = Infinity;
+  for (let i = projectiles.length - 1; i >= 0; i--) {
+    const p = projectiles[i];
+    p.t += dt;
+    p.base.addScaledVector(p.vel, dt);
+    p.group.position.copy(p.base);
+    const baseDist = p.base.distanceTo(HEAD);
+    if (p.T.zig) {
+      const k = Math.min(1, baseDist / p.startDist);
+      p.group.position.addScaledVector(p.perp, Math.sin(p.t * p.zigFreq) * p.zigAmp * k);
+      p.group.position.addScaledVector(p.perp2, Math.cos(p.t * p.zigFreq * 0.7) * p.zigAmp * 0.4 * k);
+    }
+    p.ball.rotation.x += p.spin.x * dt; p.ball.rotation.y += p.spin.y * dt;
+    if (p.shell) { p.shell.rotation.x -= dt * 1.5; p.shell.rotation.y += dt * 2; }
+    if (p.flash > 0) { p.flash -= dt; p.mat.emissiveIntensity = 3; } else p.mat.emissiveIntensity = 0.7 + Math.sin(p.t * 8) * 0.25;
+
+    const tp = p.trail.geometry.attributes.position.array;
+    tp.copyWithin(3, 0, (TRAIL - 1) * 3);
+    tp[0] = p.group.position.x; tp[1] = p.group.position.y; tp[2] = p.group.position.z;
+    p.trail.geometry.attributes.position.needsUpdate = true;
+
+    const dist = p.group.position.distanceTo(HEAD);
+    nearest = Math.min(nearest, dist);
+    _pp.subVectors(HEAD, p.base);
+    const passed = _pp.dot(p.vel) < 0;
+    if (dist < 0.45 + p.T.radius || (passed && baseDist < 1.5)) { gameOver(p); removeProjectile(p); return; }
+  }
+
+  $('vignette').style.opacity = THREE.MathUtils.clamp((7 - nearest) / 5, 0, 1).toFixed(2);
+
+  // HUD
+  $('score').textContent = state.score;
+  const mult = Math.min(4, 1 + Math.floor(state.combo / 5) * 0.5);
+  $('hud-combo').textContent = state.combo >= 3 ? `COMBO ${state.combo}  ×${mult}` : '';
+  $('level').textContent = state.level;
+  $('hud-time').textContent = fmtTime(state.time);
+  updateAmmoHud();
+  $('levelbar').firstElementChild.style.width = ((state.time % LEVEL_TIME) / LEVEL_TIME * 100) + '%';
+}
+
+function loop() {
+  requestAnimationFrame(loop);
+  const dt = Math.min(clock.getDelta(), 0.05);
+
+  if (state.mode === 'playing') update(dt);
+  else if (state.mode === 'menu') { yaw += dt * 0.08; pitch = 0.05; }
+
+  // Cámara (con temblor)
+  camera.rotation.set(pitch + view.p, yaw + view.y, 0);
+  if (state.shake > 0) {
+    state.shake -= dt;
+    const s = state.shake * 0.05;
+    camera.rotation.x += rand(-s, s); camera.rotation.y += rand(-s, s);
+  }
+
+  // Arma: pose base (reposo o recarga) + retroceso con muelles + balanceo por el ratón + respiración
+  let pose = 0;
+  const reloadingNow = state.reloading > 0;
+  newMag.visible = reloadingNow;
+  if (reloadingNow) {
+    const t = state.reloadTotal - state.reloading;
+    const ss = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
+    pose = ss(0, 0.12, t) * (1 - ss(state.reloadTotal - 0.28, state.reloadTotal, t));
+    poseNewMag(t);
+  }
+  gunJolt = Math.max(0, gunJolt - dt * 7);
+  const jolt = Math.sin(gunJolt * Math.PI) * gunJolt;
+  // Cambio de arma: la actual baja fuera de la vista y la nueva sube
+  const hol = state.switching > 0 ? Math.sin((1 - state.switching / SWITCH_TIME) * Math.PI) : 0;
+  // Inspección: se acerca al centro, enseña el costado izquierdo, gira y enseña el derecho
+  let ins = 0, insTurn = 0;
+  if (state.inspect > 0) {
+    const t = 1 - state.inspect / INSPECT_TIME, ss = (a, b, x) => THREE.MathUtils.smoothstep(x, a, b);
+    ins = ss(0, 0.18, t) * (1 - ss(0.82, 1, t));
+    insTurn = ss(0.38, 0.62, t);
+  }
+  const R0 = current.rest, RR = current.restRot;
+  _tmp.set(R0.x - 0.1 * pose - 0.075 * ins, R0.y + 0.085 * pose + 0.008 * jolt - 0.16 * hol + 0.045 * ins, R0.z - 0.03 * pose + 0.04 * hol + 0.03 * ins);
+  gunBase.lerp(_tmp, Math.min(1, dt * 14));
+  gunBaseRotX += (RR.x + 0.1 * pose + 0.06 * jolt - 0.7 * hol + 0.12 * ins - gunBaseRotX) * Math.min(1, dt * 14);
+  // Muelles integrados en sub-pasos para que sean estables aunque baje el framerate
+  const steps = Math.max(1, Math.ceil(dt / 0.008)), h = dt / steps;
+  for (let i = 0; i < steps; i++) {
+    spring(recoil, 'z', 'vz', 300, 24, h); spring(recoil, 'rx', 'vrx', 260, 20, h);
+    spring(recoil, 'ry', 'vry', 200, 18, h); spring(recoil, 'rz', 'vrz', 200, 18, h);
+    spring(view, 'p', 'vp', 180, 20, h); spring(view, 'y', 'vy', 180, 20, h);
+  }
+  const clampS = (v) => THREE.MathUtils.clamp(v, -0.05, 0.05);
+  sway.x += (clampS(mouseDX * 0.0004) - sway.x) * Math.min(1, dt * 8);
+  sway.y += (clampS(mouseDY * 0.0004) - sway.y) * Math.min(1, dt * 8);
+  mouseDX = mouseDY = 0;
+  const tb = performance.now() / 1000, breathe = Math.sin(tb * 1.7);
+  gun.position.set(gunBase.x + sway.x * 0.25, gunBase.y + breathe * 0.0012 - sway.y * 0.2, gunBase.z + recoil.z);
+  gun.rotation.set(
+    gunBaseRotX + recoil.rx + sway.y + breathe * 0.004,
+    RR.y + 0.55 * pose + recoil.ry + sway.x + ins * (1.15 - 2.3 * insTurn),
+    RR.z - 0.85 * pose + recoil.rz + Math.sin(tb * 0.9) * 0.004 - sway.x * 0.5 - 0.3 * ins * (1 - 2 * insTurn));
+  muzzleFlash.material.opacity = Math.max(0, muzzleFlash.material.opacity - dt * 30);
+  flashLight.intensity = Math.max(0, flashLight.intensity - dt * 160);
+  if (state.slideLocked) slide.position.z = current.slideTravel;   // corredera bloqueada atrás con el cargador vacío
+  else slide.position.z = Math.max(0, slide.position.z - dt * 1.2);
+  const hammer = current.model.hammer;
+  if (hammer) hammer.rotation.x = Math.min(0, hammer.rotation.x + dt * 22);
+  gun.visible = state.mode !== 'menu';
+
+  updateEnvironment(performance.now() / 1000);
+  padRing.material.color.setHSL(0.55 + Math.sin(performance.now() / 800) * 0.05, 1, 0.6);
+
+  // Efectos
+  for (let i = effects.length - 1; i >= 0; i--) {
+    const e = effects[i]; e.life -= dt; e.update(dt);
+    if (e.life <= 0) { e.dispose(); effects.splice(i, 1); }
+  }
+  camera.updateMatrixWorld();
+  for (let i = popups.length - 1; i >= 0; i--) {
+    const p = popups[i]; p.life -= dt; p.pos.y += dt * 0.8;
+    const v = p.pos.clone().project(camera);
+    if (p.life <= 0 || v.z > 1) { p.el.remove(); popups.splice(i, 1); continue; }
+    p.el.style.left = ((v.x + 1) / 2 * innerWidth) + 'px';
+    p.el.style.top = ((1 - v.y) / 2 * innerHeight) + 'px';
+    p.el.style.opacity = Math.min(1, p.life * 2);
+  }
+  if (hitmarkerTimer > 0) { hitmarkerTimer -= dt; if (hitmarkerTimer <= 0) $('hitmarker').style.opacity = 0; }
+
+  renderer.render(scene, camera);
+  drawOverlay();
+}
+loop();
+</script>
+</body>
+</html>
